@@ -50,6 +50,11 @@
   <!--   <doc_depend>doxygen</doc_depend> -->
   <buildtool_depend>catkin</buildtool_depend>
 
+  <build_depend>roscpp</build_depend>
+  <depend>sun_robot_lib</depend>
+  <depend>sun_robot_msgs</depend>
+  <depend>std_srvs</depend>
+
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>
