@@ -31,7 +31,7 @@
 
 //Function handles definition
 typedef boost::function<TooN::Vector<>(void)> CLIK_GET_QR_FCN;
-typedef boost::function<void(TooN::Vector<>,TooN::Vector<>)> CLIK_PUBLISH_QR_FCN;
+typedef boost::function<void(const TooN::Vector<>&,const TooN::Vector<>&)> CLIK_PUBLISH_QR_FCN;
 
 class CLIK_Node {
 

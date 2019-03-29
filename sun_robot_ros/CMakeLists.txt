@@ -105,7 +105,7 @@ find_package(catkin REQUIRED COMPONENTS
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-#  LIBRARIES sun_robot_ros
+  LIBRARIES ${PROJECT_NAME}
   CATKIN_DEPENDS sun_robot_lib sun_robot_msgs std_srvs
 #  DEPENDS system_lib
 )
