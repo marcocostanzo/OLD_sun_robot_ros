@@ -61,6 +61,7 @@ add_message_files(DIRECTORY msg)
 #   Service1.srv
 #   Service2.srv
 # )
+add_service_files(DIRECTORY srv)
 
 ## Generate actions in the 'action' folder
 # add_action_files(

@@ -61,6 +61,7 @@ CLIK_Node::CLIK_Node(
             const ros::NodeHandle& nh,
             const string& desired_pose_twist_topic, 
             const string& set_stopped_service,
+            const std::string& get_status_service,
             const CLIK_GET_QR_FCN& getJointPosition_fcn, 
             const CLIK_PUBLISH_QR_FCN& publish_fcn,
             double clik_gain,
@@ -73,6 +74,7 @@ CLIK_Node::CLIK_Node(
     _nh(nh),
     _desired_pose_twist_topic_str(desired_pose_twist_topic),
     _service_set_stopped_str(set_stopped_service),
+    _service_get_status_str(get_status_service),
     _getJointPosition_fcn(getJointPosition_fcn),
     _publish_fcn(publish_fcn),
     _clik_gain(clik_gain),
@@ -123,6 +125,29 @@ bool CLIK_Node::setStopped(std_srvs::SetBool::Request  &req,
 	return true;	
 }
 
+bool CLIK_Node::getStatus(sun_robot_msgs::ClikStatus::Request  &req, 
+   		 		sun_robot_msgs::ClikStatus::Response &res){
+
+
+    Matrix<4,4> b_T_e = _robot->fkine(_qDH_k);
+    Vector<3> pos = transl(b_T_e);
+    UnitQuaternion quat = UnitQuaternion(b_T_e);
+
+    res.pose.position.x = pos[0];
+    res.pose.position.y = pos[1];
+    res.pose.position.z = pos[2];
+
+    res.pose.orientation.w = quat.getS();
+    Vector<3> quat_v = quat.getV();
+    res.pose.orientation.x = quat_v[0];
+    res.pose.orientation.y = quat_v[1];
+    res.pose.orientation.z = quat_v[2];
+
+    res.success = true;
+    return true;
+
+}
+
 /* END ROS CBs */
 
 
@@ -151,6 +176,9 @@ void CLIK_Node::run(){
 
     //Init Services
     ros::ServiceServer serviceSetStopped = _nh.advertiseService( _service_set_stopped_str, &CLIK_Node::setStopped, this);
+
+    //Init Services
+    ros::ServiceServer serviceGetClikStatus = _nh.advertiseService( _service_get_status_str, &CLIK_Node::getStatus, this);
 
     initClikVars();
 

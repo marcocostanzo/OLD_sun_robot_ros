@@ -27,6 +27,7 @@
 #include "Robot.h"
 #include "ros/ros.h"
 #include "sun_robot_msgs/PoseTwistStamped.h"
+#include "sun_robot_msgs/ClikStatus.h"
 #include "std_srvs/SetBool.h"
 
 //Function handles definition
@@ -61,6 +62,7 @@ CLIK_PUBLISH_QR_FCN _publish_fcn;
 ros::NodeHandle _nh;
 std::string _desired_pose_twist_topic_str;
 std::string _service_set_stopped_str;
+std::string _service_get_status_str;
 
 
 public:
@@ -71,6 +73,7 @@ CLIK_Node(  const Robot& robot,
             const ros::NodeHandle& nh,
             const std::string& desired_pose_twist_topic, 
             const std::string& set_stopped_service,
+            const std::string& get_status_service,
             const CLIK_GET_QR_FCN& getJointPosition_fcn, 
             const CLIK_PUBLISH_QR_FCN& publish_fcn,
             double clik_gain,
@@ -89,6 +92,9 @@ void desiredPoseTwist_cbk( const sun_robot_msgs::PoseTwistStamped::ConstPtr& pos
 
 bool setStopped(std_srvs::SetBool::Request  &req, 
    		 		std_srvs::SetBool::Response &res);
+
+bool getStatus(sun_robot_msgs::ClikStatus::Request  &req, 
+   		 		sun_robot_msgs::ClikStatus::Response &res);
 
 /* END ROS CBs */
 
