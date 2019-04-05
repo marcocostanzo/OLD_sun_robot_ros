@@ -46,11 +46,11 @@ protected:
 RobotPtr _robot;
 
 //Clik vars
-TooN::Vector<6,int> _mask;// <- mask, bitmask, if the i-th element is 0 then the i-th operative space coordinate will not be used in the error computation
+TooN::Vector<6,int> _mask_cartesian;// <- mask, bitmask, if the i-th element is 0 then the i-th operative space coordinate will not be used in the error computation
 double _clik_gain;// <- CLIK Gain
 double _hz;// <- hz, frequency
 double _second_obj_gain; // <- Gain for second objective  
-TooN::Vector<> _joint_target; //<- target for joint position (used into the second objective obj)
+TooN::Vector<> _joint_target_dh; //<- target for joint position (used into the second objective obj)
 TooN::Vector<> _joint_weights;
 bool _stopped; //<- if true the node is stopped
 
@@ -81,8 +81,16 @@ CLIK_Node(  const Robot& robot,
             double second_obj_gain,
             const TooN::Vector<>& joint_target,
             const TooN::Vector<>& joint_weights,
-            const TooN::Vector<6,int>& mask = TooN::Ones,
+            const TooN::Vector<6,int>& mask_cartesian = TooN::Ones,
             bool start_stopped = true );
+
+CLIK_Node(  
+            const Robot& robot, 
+            const ros::NodeHandle& nh_for_topics,
+            const ros::NodeHandle& nh_for_parmas,
+            const CLIK_GET_QR_FCN& getJointPosition_fcn, 
+            const CLIK_PUBLISH_QR_FCN& publish_fcn
+            );
 
 /* ROS CALLBKs */
 TooN::Vector<3> _pos_d;
