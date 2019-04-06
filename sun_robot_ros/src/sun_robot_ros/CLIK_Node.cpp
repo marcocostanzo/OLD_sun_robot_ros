@@ -259,7 +259,7 @@ bool CLIK_Node::getStatus(sun_robot_msgs::ClikStatus::Request  &req,
         refresh();
     }
 
-    //res.mode = _mode;
+    res.mode = _mode;
 
     res.qR.resize(_robot->getNumJoints());
     Vector<> qR = _robot->joints_DH2Robot(_qDH_k);
