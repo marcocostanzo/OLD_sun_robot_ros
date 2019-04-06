@@ -60,33 +60,38 @@ CLIK_Node::CLIK_Node(
             const Robot& robot, 
             const ros::NodeHandle& nh,
             const string& desired_pose_twist_topic, 
-            const string& set_stopped_service,
-            const std::string& get_status_service,
+            const string& desired_q_topic, 
+            const string& set_mode_service,
+            const string& get_status_service,
+            const string& set_params_service,
             const CLIK_GET_QR_FCN& getJointPosition_fcn, 
             const CLIK_PUBLISH_QR_FCN& publish_fcn,
             double clik_gain,
             double hz,
             double second_obj_gain,
-            const Vector<>& joint_target_dh,
+            const Vector<>& joint_target_robot,
             const Vector<>& joint_weights,
-            const Vector<6,int>& mask_cartesian,
-            bool start_stopped )
+            const Vector<6,int>& mask_cartesian
+            )
     :_robot( robot.clone() ),
     _nh(nh),
     _desired_pose_twist_topic_str(desired_pose_twist_topic),
-    _service_set_stopped_str(set_stopped_service),
+    _desired_q_topic_str(desired_q_topic),
+    _service_set_mode_str(set_mode_service),
     _service_get_status_str(get_status_service),
+    _service_set_params_str(set_params_service),
     _getJointPosition_fcn(getJointPosition_fcn),
     _publish_fcn(publish_fcn),
     _clik_gain(clik_gain),
     _hz(hz),
     _second_obj_gain(second_obj_gain),
-    _joint_target_dh(joint_target_dh),
+    _joint_target_dh( robot.joints_Robot2DH(joint_target_robot) ),
     _joint_weights(joint_weights),
     _mask_cartesian(mask_cartesian),
-    _stopped(start_stopped),
     _qDH_k( Zeros( robot.getNumJoints() ) ),
-    _dqDH( Zeros( robot.getNumJoints() ) )
+    _dqDH( Zeros( robot.getNumJoints() ) ),
+    _mode(sun_robot_msgs::ClikSetMode::Request::MODE_STOP),
+    _loop_rate(hz)
     {}
 
 CLIK_Node::CLIK_Node(  
@@ -103,31 +108,34 @@ CLIK_Node::CLIK_Node(
     _joint_target_dh(Zeros(robot.getNumJoints())),
     _joint_weights(Zeros(robot.getNumJoints())),
     _mask_cartesian(Ones),
-    _stopped(true),
     _qDH_k( Zeros( robot.getNumJoints() ) ),
-    _dqDH( Zeros( robot.getNumJoints() ) )
+    _dqDH( Zeros( robot.getNumJoints() ) ),
+    _mode(sun_robot_msgs::ClikSetMode::Request::MODE_STOP),
+    _loop_rate(1000.0)
 {
     //params
     nh_for_parmas.param("desired_pose_twist_topic" , _desired_pose_twist_topic_str, string("desired_pose_twist") );
-    nh_for_parmas.param("set_stopped_service" , _service_set_stopped_str, string("set_stopped") );
+    nh_for_parmas.param("desired_q_topic" , _desired_q_topic_str, string("desired_q") );
+    nh_for_parmas.param("set_mode_service" , _service_set_mode_str, string("set_mode") );
     nh_for_parmas.param("get_status_service" , _service_get_status_str, string("get_status") );
+    nh_for_parmas.param("set_params_service" , _service_set_params_str, string("set_params") );
     nh_for_parmas.param("clik_gain" , _clik_gain, 0.5 );
     nh_for_parmas.param("hz" , _hz, 1000.0 );
+    _loop_rate = ros::Rate(_hz);
     double dls_joint_speed_saturation;
     nh_for_parmas.param("dls_joint_speed_saturation" , dls_joint_speed_saturation, 5.0 );
     _robot->setDLSJointSpeedSaturation(dls_joint_speed_saturation);
     nh_for_parmas.param("second_obj_gain" , _second_obj_gain, 0.0 );
-    nh_for_parmas.param("start_stopped" , _stopped, true );
 
-    std::vector<double> joint_target_dh_std;
-    nh_for_parmas.getParam("joint_target_dh", joint_target_dh_std);
-    if(joint_target_dh_std.size() != _robot->getNumJoints()){
-        cout << HEADER_PRINT BOLDRED "Error: joint_target size mismatch" CRESET << endl;
+    vector<double> joint_target_robot_std;
+    nh_for_parmas.getParam("joint_target_robot", joint_target_robot_std);
+    if(joint_target_robot_std.size() != _robot->getNumJoints()){
+        cout << HEADER_PRINT BOLDRED "Error: joint_target_robot size mismatch" CRESET << endl;
         exit(-1);
     }
-    _joint_target_dh = wrapVector(joint_target_dh_std.data(), joint_target_dh_std.size());
+    _joint_target_dh = _robot->joints_Robot2DH( wrapVector(joint_target_robot_std.data(), joint_target_robot_std.size()) );
 
-    std::vector<double> joint_weights_std;
+    vector<double> joint_weights_std;
     nh_for_parmas.getParam("joint_weights", joint_weights_std);
     if(joint_weights_std.size() != _robot->getNumJoints()){
         cout << HEADER_PRINT BOLDRED "Error: joint_weights size mismatch" CRESET << endl;
@@ -135,7 +143,7 @@ CLIK_Node::CLIK_Node(
     }
     _joint_weights = wrapVector(joint_weights_std.data(), joint_weights_std.size());
 
-    std::vector<int> mask_cartesian_std;
+    vector<int> mask_cartesian_std;
     nh_for_parmas.getParam("mask_cartesian", mask_cartesian_std);
     if(mask_cartesian_std.size() != 6){
         cout << HEADER_PRINT BOLDRED "Error: mask_cartesian size mismatch" CRESET << endl;
@@ -143,7 +151,7 @@ CLIK_Node::CLIK_Node(
     }
     _mask_cartesian = wrapVector(mask_cartesian_std.data(), mask_cartesian_std.size());
 
-    std::vector<double> n_T_e_position_std;
+    vector<double> n_T_e_position_std;
     nh_for_parmas.getParam("n_T_e_position", n_T_e_position_std);
     if(n_T_e_position_std.size() != 3){
         cout << HEADER_PRINT BOLDRED "Error: n_T_e_position size mismatch" CRESET << endl;
@@ -151,7 +159,7 @@ CLIK_Node::CLIK_Node(
     }
     Vector<3> n_T_e_position = wrapVector(n_T_e_position_std.data(), n_T_e_position_std.size());
 
-    std::vector<double> n_T_e_quaternion_std;
+    vector<double> n_T_e_quaternion_std;
     nh_for_parmas.getParam("n_T_e_quaternion", n_T_e_quaternion_std);
     if(n_T_e_quaternion_std.size() != 4){
         cout << HEADER_PRINT BOLDRED "Error: n_T_e_quaternion size mismatch" CRESET << endl;
@@ -191,14 +199,55 @@ void CLIK_Node::desiredPoseTwist_cbk( const sun_robot_msgs::PoseTwistStamped::Co
 
 }
 
-bool CLIK_Node::setStopped(std_srvs::SetBool::Request  &req, 
-   		 		std_srvs::SetBool::Response &res){
-	_stopped = req.data;
-    if(!_stopped){
-        initClikVars();
-    } else{
-        cout << HEADER_PRINT YELLOW "Stopped!" << CRESET << endl;
+void CLIK_Node::desiredQ_cbk( const sun_robot_msgs::JointPositionVelocityStamped::ConstPtr& joi_pos_vel_msg ){
+
+    if(_mode == sun_robot_msgs::ClikSetMode::Request::MODE_JOINT){
+
+        Vector<> qR = wrapVector(joi_pos_vel_msg->position.data(), joi_pos_vel_msg->position.size());
+        Vector<> dqR = wrapVector(joi_pos_vel_msg->velocity.data(), joi_pos_vel_msg->velocity.size());
+
+        if( (qR.size() != _robot->getNumJoints()) || (dqR.size() != _robot->getNumJoints()) ){
+            cout << HEADER_PRINT RED "ERROR: MODE_JOINT size mismatch" CRESET << endl;
+            return;
+        }
+
+        safety_check(qR,dqR);
+
+        _publish_fcn(qR,dqR);
+
     }
+
+}
+
+bool CLIK_Node::setMode(sun_robot_msgs::ClikSetMode::Request  &req, 
+   		 		sun_robot_msgs::ClikSetMode::Response &res){
+
+    switch (req.mode)
+    {
+        case sun_robot_msgs::ClikSetMode::Request::MODE_STOP:{
+            cout << HEADER_PRINT YELLOW "Stopped!" << CRESET << endl;
+            break;
+        }
+        case sun_robot_msgs::ClikSetMode::Request::MODE_CLIK:{
+            cout << HEADER_PRINT YELLOW "CLIK MODE" << CRESET << endl;
+            break;
+        }
+        case sun_robot_msgs::ClikSetMode::Request::MODE_JOINT:{
+            cout << HEADER_PRINT YELLOW "JOINT MODE" << CRESET << endl;
+            break;
+        }
+        default:{
+            cout << HEADER_PRINT RED "Error in setMode(): Invalid mode in request!" CRESET << endl;
+            res.success = false;
+            return true;
+        }
+    }
+
+    if( _mode != req.mode ){
+        refresh();
+    }
+    _mode = req.mode;
+    
     res.success = true;
 	return true;	
 }
@@ -206,6 +255,21 @@ bool CLIK_Node::setStopped(std_srvs::SetBool::Request  &req,
 bool CLIK_Node::getStatus(sun_robot_msgs::ClikStatus::Request  &req, 
    		 		sun_robot_msgs::ClikStatus::Response &res){
 
+    if(req.refresh){
+        refresh();
+    }
+
+    //res.mode = _mode;
+
+    res.qR.resize(_robot->getNumJoints());
+    Vector<> qR = _robot->joints_DH2Robot(_qDH_k);
+    res.qR[0] = qR[0];
+    res.qR[1] = qR[1];
+    res.qR[2] = qR[2];
+    res.qR[3] = qR[3];
+    res.qR[4] = qR[4];
+    res.qR[5] = qR[5];
+    res.qR[6] = qR[6];
 
     Matrix<4,4> b_T_e = _robot->fkine(_qDH_k);
     Vector<3> pos = transl(b_T_e);
@@ -226,11 +290,42 @@ bool CLIK_Node::getStatus(sun_robot_msgs::ClikStatus::Request  &req,
 
 }
 
+bool CLIK_Node::setParams(sun_robot_msgs::ClikSetParams::Request  &req, 
+   		 		sun_robot_msgs::ClikSetParams::Response &res){
+
+    if( ( req.joint_target_robot.size() != _robot->getNumJoints() ) || ( req.joint_weights.size() != _robot->getNumJoints() ) ){
+        
+        cout << HEADER_PRINT RED "Error in setParams(): joint size mismatch" CRESET << endl;
+
+        res.success = false;
+        return true;
+    }
+
+    _clik_gain = req.gain;
+    _hz = req.hz;
+    _loop_rate = ros::Rate(_hz);
+    _robot->setDLSJointSpeedSaturation( req.dls_joint_speed_saturation );
+    _second_obj_gain = req.gain_2_obj;
+    _joint_target_dh = _robot->joints_Robot2DH( 
+                        wrapVector(
+                            req.joint_target_robot.data(), 
+                            req.joint_target_robot.size()
+                        ) 
+                        );
+    _joint_weights = wrapVector(
+                        req.joint_weights.data(), 
+                        req.joint_weights.size()
+                    ); 
+
+    res.success = true;
+    return true;
+
+}
+
 /* END ROS CBs */
 
-
 /* RUNNERS */
-void CLIK_Node::initClikVars(){
+void CLIK_Node::refresh(){
     //Wait for initial configuration
     cout << HEADER_PRINT YELLOW "Wait for joint positions..." << CRESET << endl;
     _qDH_k = _robot->joints_Robot2DH( _getJointPosition_fcn() );
@@ -251,65 +346,86 @@ void CLIK_Node::run(){
 
     //Initialize subscribers
     ros::Subscriber desired_pose_twist_sub = _nh.subscribe( _desired_pose_twist_topic_str, 1, &CLIK_Node::desiredPoseTwist_cbk, this);
+    ros::Subscriber desired_q_sub = _nh.subscribe( _desired_q_topic_str, 1, &CLIK_Node::desiredQ_cbk, this);
 
     //Init Services
-    ros::ServiceServer serviceSetStopped = _nh.advertiseService( _service_set_stopped_str, &CLIK_Node::setStopped, this);
-
-    //Init Services
+    ros::ServiceServer serviceSetMode = _nh.advertiseService( _service_set_mode_str, &CLIK_Node::setMode, this);
     ros::ServiceServer serviceGetClikStatus = _nh.advertiseService( _service_get_status_str, &CLIK_Node::getStatus, this);
+    ros::ServiceServer serviceSetClikParams = _nh.advertiseService( _service_set_params_str, &CLIK_Node::setParams, this);
 
-    initClikVars();
-
-    ros::Rate loop_rate(_hz);
+    refresh();
 
     while(ros::ok()){
 
         ros::spinOnce();
-
-        if(_stopped){
-            loop_rate.sleep();
-            continue;
+        
+        switch (_mode)
+        {
+            case sun_robot_msgs::ClikSetMode::Request::MODE_STOP:{
+                break;
+            }
+            case sun_robot_msgs::ClikSetMode::Request::MODE_CLIK:{
+                clik_loop();
+                break;
+            }
+            case sun_robot_msgs::ClikSetMode::Request::MODE_JOINT:{
+                break;
+            }
+            default:{
+                cout << HEADER_PRINT BOLDRED "Error in main while: Invalid mode!" CRESET << endl;
+                exit(-1);
+            }
         }
 
-        _qDH_k = //<- qDH at time k+1
-            _robot->clik(   
-            _qDH_k, //<- qDH now, time k
-            _pos_d, // <- desired position
-            _quat_d, // <- desired quaternion
-            _oldQ,// <- quaternion at last time (to ensure continuity)
-            _dpos_d, // <- desired translational velocity
-            _w_d, //<- desired angular velocity
-            _mask_cartesian,// <- mask, bitmask, if the i-th element is 0 then the i-th operative space coordinate will not be used in the error computation
-            _clik_gain*_hz,// <- CLIK Gain
-            1.0/_hz,// <- Ts, sampling time
-            _second_obj_gain*_hz, // <- Gain for second objective  
-            _joint_target_dh, //<- target for joint position (used into the second objective obj)
-            _joint_weights, // <- weights for joints in the second objective       
-            //Return Vars
-            _dqDH, // <- joints velocity at time k+1
-            _error, //<- error vector at time k
-            _oldQ // <- Quaternion at time k (usefull for continuity in the next call of these function)
-        );
+        _loop_rate.sleep();
 
-        Vector<> qR = _robot->joints_DH2Robot( _qDH_k );
-        Vector<> dqR = _robot->jointsvel_DH2Robot( _dqDH );
+    }
 
-        //check limits
-        if( _robot->exceededHardJointLimits( qR ) ){
-            cout << HEADER_PRINT BOLDRED "ERROR ROBOT JOINT LIMITS!! On joints:" <<
-                    _robot->jointsNameFromBitMask( _robot->checkHardJointLimits(qR) ) << CRESET << endl;
-            exit(-1);
-        }
-        if( _robot->exceededHardVelocityLimits( dqR ) ){
-            cout << HEADER_PRINT BOLDRED "ERROR ROBOT Velocity!! On joints:" <<
-                    _robot->jointsNameFromBitMask( _robot->checkHardVelocityLimits( dqR ) ) << CRESET << endl;
-            exit(-1);
-        }
+}
 
-        _publish_fcn( qR, dqR );
+void CLIK_Node::clik_loop(){
 
-        loop_rate.sleep();
+    _qDH_k = //<- qDH at time k+1
+        _robot->clik(   
+        _qDH_k, //<- qDH now, time k
+        _pos_d, // <- desired position
+        _quat_d, // <- desired quaternion
+        _oldQ,// <- quaternion at last time (to ensure continuity)
+        _dpos_d, // <- desired translational velocity
+        _w_d, //<- desired angular velocity
+        _mask_cartesian,// <- mask, bitmask, if the i-th element is 0 then the i-th operative space coordinate will not be used in the error computation
+        _clik_gain*_hz,// <- CLIK Gain
+        1.0/_hz,// <- Ts, sampling time
+        _second_obj_gain*_hz, // <- Gain for second objective  
+        _joint_target_dh, //<- target for joint position (used into the second objective obj)
+        _joint_weights, // <- weights for joints in the second objective       
+        //Return Vars
+        _dqDH, // <- joints velocity at time k+1
+        _error, //<- error vector at time k
+        _oldQ // <- Quaternion at time k (usefull for continuity in the next call of these function)
+    );
 
+    Vector<> qR = _robot->joints_DH2Robot( _qDH_k );
+    Vector<> dqR = _robot->jointsvel_DH2Robot( _dqDH );
+
+    safety_check(qR, dqR);
+
+    _publish_fcn( qR, dqR );
+
+}
+
+void CLIK_Node::safety_check(const Vector<>& qR, const Vector<>& dqR){
+
+    //check limits
+    if( _robot->exceededHardJointLimits( qR ) ){
+        cout << HEADER_PRINT BOLDRED "ERROR ROBOT JOINT LIMITS!! On joints:" <<
+                _robot->jointsNameFromBitMask( _robot->checkHardJointLimits(qR) ) << CRESET << endl;
+        exit(-1);
+    }
+    if( _robot->exceededHardVelocityLimits( dqR ) ){
+        cout << HEADER_PRINT BOLDRED "ERROR ROBOT Velocity!! On joints:" <<
+                _robot->jointsNameFromBitMask( _robot->checkHardVelocityLimits( dqR ) ) << CRESET << endl;
+        exit(-1);
     }
 
 }

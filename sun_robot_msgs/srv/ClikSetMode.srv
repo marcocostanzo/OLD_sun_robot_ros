@@ -1,0 +1,6 @@
+uint8 MODE_STOP=0
+uint8 MODE_CLIK=1
+uint8 MODE_JOINT=2
+uint8 mode
+---
+bool success

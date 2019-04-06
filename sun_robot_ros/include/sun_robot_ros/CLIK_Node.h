@@ -27,8 +27,10 @@
 #include "Robot.h"
 #include "ros/ros.h"
 #include "sun_robot_msgs/PoseTwistStamped.h"
+#include "sun_robot_msgs/JointPositionVelocityStamped.h"
 #include "sun_robot_msgs/ClikStatus.h"
-#include "std_srvs/SetBool.h"
+#include "sun_robot_msgs/ClikSetMode.h"
+#include "sun_robot_msgs/ClikSetParams.h"
 
 //Function handles definition
 typedef boost::function<TooN::Vector<>(void)> CLIK_GET_QR_FCN;
@@ -52,7 +54,6 @@ double _hz;// <- hz, frequency
 double _second_obj_gain; // <- Gain for second objective  
 TooN::Vector<> _joint_target_dh; //<- target for joint position (used into the second objective obj)
 TooN::Vector<> _joint_weights;
-bool _stopped; //<- if true the node is stopped
 
 //external functions
 CLIK_GET_QR_FCN _getJointPosition_fcn;
@@ -60,29 +61,37 @@ CLIK_PUBLISH_QR_FCN _publish_fcn;
 
 //ros
 ros::NodeHandle _nh;
+ros::Rate _loop_rate;
 std::string _desired_pose_twist_topic_str;
-std::string _service_set_stopped_str;
+std::string _desired_q_topic_str;
+std::string _service_set_mode_str;
 std::string _service_get_status_str;
+std::string _service_set_params_str;
+
+//mode
+uint8_t _mode; // Stop/CLIK/Joint
 
 
 public:
 
 /*CONSTRUCTORS*/
-
-CLIK_Node(  const Robot& robot, 
+CLIK_Node(  
+            const Robot& robot, 
             const ros::NodeHandle& nh,
             const std::string& desired_pose_twist_topic, 
-            const std::string& set_stopped_service,
+            const std::string& desired_q_topic, 
+            const std::string& set_mode_service,
             const std::string& get_status_service,
+            const std::string& set_params_service,
             const CLIK_GET_QR_FCN& getJointPosition_fcn, 
             const CLIK_PUBLISH_QR_FCN& publish_fcn,
             double clik_gain,
             double hz,
             double second_obj_gain,
-            const TooN::Vector<>& joint_target,
+            const TooN::Vector<>& joint_target_dh,
             const TooN::Vector<>& joint_weights,
-            const TooN::Vector<6,int>& mask_cartesian = TooN::Ones,
-            bool start_stopped = true );
+            const TooN::Vector<6,int>& mask_cartesian = TooN::Ones
+            );
 
 CLIK_Node(  
             const Robot& robot, 
@@ -92,6 +101,7 @@ CLIK_Node(
             const CLIK_PUBLISH_QR_FCN& publish_fcn
             );
 
+protected:
 /* ROS CALLBKs */
 TooN::Vector<3> _pos_d;
 TooN::Vector<3> _dpos_d;
@@ -99,11 +109,16 @@ UnitQuaternion _quat_d;
 TooN::Vector<3> _w_d;
 void desiredPoseTwist_cbk( const sun_robot_msgs::PoseTwistStamped::ConstPtr& pose_twist_msg );
 
-bool setStopped(std_srvs::SetBool::Request  &req, 
-   		 		std_srvs::SetBool::Response &res);
+void desiredQ_cbk( const sun_robot_msgs::JointPositionVelocityStamped::ConstPtr& joi_pos_vel_msg );
+
+bool setMode(sun_robot_msgs::ClikSetMode::Request  &req, 
+   		 		sun_robot_msgs::ClikSetMode::Response &res);
 
 bool getStatus(sun_robot_msgs::ClikStatus::Request  &req, 
    		 		sun_robot_msgs::ClikStatus::Response &res);
+
+bool setParams(sun_robot_msgs::ClikSetParams::Request  &req, 
+   		 		sun_robot_msgs::ClikSetParams::Response &res);
 
 /* END ROS CBs */
 
@@ -113,9 +128,16 @@ TooN::Vector<> _qDH_k;
 UnitQuaternion _oldQ;
 TooN::Vector<> _dqDH;
 TooN::Vector<6> _error;
-void initClikVars();
+
+public:
+void refresh();
 
 void run();
+
+protected:
+void clik_loop();
+
+void safety_check(const TooN::Vector<>& qR, const TooN::Vector<>& dqR);
 
 }; //END CLASS
 

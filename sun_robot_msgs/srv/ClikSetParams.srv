@@ -1,0 +1,8 @@
+float32 gain
+float32 hz
+float32 dls_joint_speed_saturation
+float32 gain_2_obj
+float32[] joint_target_robot
+float32[] joint_weights
+---
+bool success
