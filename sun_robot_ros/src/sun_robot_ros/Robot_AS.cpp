@@ -1,0 +1,873 @@
+/*
+
+    Robot Action Server Class
+
+    Copyright 2019 Università della Campania Luigi Vanvitelli
+
+    Author: Marco Costanzo <marco.costanzo@unicampania.it>
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+*/
+
+#include "sun_robot_ros/Robot_AS.h"
+
+#ifndef SUN_COLORS
+#define SUN_COLORS
+
+/* ======= COLORS ========= */
+#define CRESET   "\033[0m"
+#define BLACK   "\033[30m"      /* Black */
+#define RED     "\033[31m"      /* Red */
+#define GREEN   "\033[32m"      /* Green */
+#define YELLOW  "\033[33m"      /* Yellow */
+#define BLUE    "\033[34m"      /* Blue */
+#define MAGENTA "\033[35m"      /* Magenta */
+#define CYAN    "\033[36m"      /* Cyan */
+#define WHITE   "\033[37m"      /* White */
+#define BOLD    "\033[1m"       /* Bold */
+#define BOLDBLACK   "\033[1m\033[30m"      /* Bold Black */
+#define BOLDRED     "\033[1m\033[31m"      /* Bold Red */
+#define BOLDGREEN   "\033[1m\033[32m"      /* Bold Green */
+#define BOLDYELLOW  "\033[1m\033[33m"      /* Bold Yellow */
+#define BOLDBLUE    "\033[1m\033[34m"      /* Bold Blue */
+#define BOLDMAGENTA "\033[1m\033[35m"      /* Bold Magenta */
+#define BOLDCYAN    "\033[1m\033[36m"      /* Bold Cyan */
+#define BOLDWHITE   "\033[1m\033[37m"      /* Bold White */
+/*===============================*/
+
+#endif
+
+#define HEADER_PRINT BOLDYELLOW "[" << ros::this_node::getName() << "][ROBOT_AS] " CRESET 
+
+using namespace std;
+using namespace TooN;
+
+Robot_AS::Robot_AS(
+    int num_joints,
+    const ros::NodeHandle& nh,
+    double hz,
+    const string& service_clik_status,
+    const string& service_set_clik_mode,
+    const string& topic_joints_command,
+    const string& topic_cartesian_command,
+    const string& action_move_joints,
+    const string& action_simple_move_joints,
+    const string& action_move_line_segment
+)
+:_num_joints(num_joints),
+_nh(nh),
+_hz(hz),
+_move_joint_action_str(action_move_joints),
+_move_joint_as(_nh, action_move_joints, boost::bind(&Robot_AS::executeMoveJointCB, this, _1), false),
+_simple_move_joint_action_str(action_simple_move_joints),
+_simple_move_joint_as(_nh, action_simple_move_joints, boost::bind(&Robot_AS::executeSimpleMoveJointCB, this, _1), false),
+_move_line_segment_action_str(action_move_line_segment),
+_move_line_segment_as(_nh, action_move_line_segment, boost::bind(&Robot_AS::executeMoveLineSegmentCB, this, _1), false),
+_b_action_running(false),
+_b_action_preempted(false),
+_actual_qR(Zeros(_num_joints))
+{
+    _serviceGetClikStatus = _nh.serviceClient<sun_robot_msgs::ClikStatus>(service_clik_status);
+    _serviceSetClikMode = _nh.serviceClient<sun_robot_msgs::ClikSetMode>(service_set_clik_mode);
+    _pub_joints = _nh.advertise<sun_robot_msgs::JointPositionVelocityStamped>(topic_joints_command, 1);
+    _pub_cartesian = _nh.advertise<sun_robot_msgs::PoseTwistStamped>(topic_cartesian_command, 1);
+    
+    _move_joints_feedback.positions.resize(_num_joints);
+    _move_joints_feedback.velocities.resize(_num_joints);
+    _simple_move_joints_feedback.positions.resize(_num_joints);
+    _simple_move_joints_feedback.velocities.resize(_num_joints);
+}
+
+/*
+    Start the server
+*/
+void Robot_AS::sart(){
+    _move_joint_as.start();
+    _simple_move_joint_as.start();
+    _move_line_segment_as.start();
+}
+
+/*************************************
+    Common functions
+***************************************/
+
+bool Robot_AS::updateActualStatus( bool b_refresh ){
+
+    sun_robot_msgs::ClikStatus status_msg;
+
+    status_msg.request.refresh = b_refresh;
+
+    bool b_result = _serviceGetClikStatus.call(status_msg);
+    b_result = b_result && status_msg.response.success;
+
+    if(!b_result){
+        return false;
+    }
+
+    if( status_msg.response.qR.size() != _num_joints ){
+        cout << HEADER_PRINT BOLDRED "ERROR! NumJoints size mismatch" CRESET << endl;
+        return false;
+    }
+
+    _actual_position[0] = status_msg.response.pose.position.x;
+    _actual_position[1] = status_msg.response.pose.position.y;
+    _actual_position[2] = status_msg.response.pose.position.z;
+
+    _actual_quaternion = UnitQuaternion(
+        status_msg.response.pose.orientation.w, 
+        makeVector(
+            status_msg.response.pose.orientation.x,
+            status_msg.response.pose.orientation.y,
+            status_msg.response.pose.orientation.z
+        )
+    );
+
+    for( int i=0; i<_num_joints; i++ ){
+        _actual_qR[i] = status_msg.response.qR[i];
+    }
+
+    return true;
+    
+}
+
+bool Robot_AS::clikSetMode( uint8_t clik_mode ){
+
+    sun_robot_msgs::ClikSetMode setmode_msg;
+
+    setmode_msg.request.mode = clik_mode;
+
+    bool b_result = _serviceSetClikMode.call(setmode_msg);
+    b_result = b_result && setmode_msg.response.success;
+
+    return b_result;
+
+}
+
+void Robot_AS::releaseResource(){
+
+    if( !clikSetMode(sun_robot_msgs::ClikSetMode::Request::MODE_STOP) ){
+        cout << HEADER_PRINT BOLDRED "Failed to STOP Clik" CRESET << endl;
+    }
+
+    _b_action_preempted = false;
+    _b_action_running = false;
+
+}
+
+/*************************************
+    END Common functions
+***************************************/
+
+/*************************************
+    Action MoveJoint
+***************************************/
+
+/*
+#goal definition
+float64[] desired_positions
+float64[] durations
+float64[] start_times
+float64[] initial_velocities
+float64[] final_velocities
+float64[] initial_accelerations
+float64[] final_accelerations
+float64 start_delay
+float64 steady_state_thr
+---
+#result definition
+bool success
+string msg
+---
+#feedback
+float64[] positions
+float64[] velocities
+*/
+
+void Robot_AS::moveJointAbort( const string& msg ){
+    sun_robot_msgs::MoveJointsResult move_joints_result;
+    move_joints_result.success = false;
+    move_joints_result.msg = msg;
+    _move_joint_as.setAborted(move_joints_result);
+}
+
+void Robot_AS::moveJointPublishFeedback( const Vector<>& qR, const Vector<>& dqR ){
+    for(int i=0; i<_num_joints; i++){
+        _move_joints_feedback.positions[i] = qR[i];
+        _move_joints_feedback.velocities[i] = dqR[i];
+    }
+    _move_joint_as.publishFeedback(_move_joints_feedback);
+}
+
+bool Robot_AS::moveJointIsPreemptRequested(){
+    return _move_joint_as.isPreemptRequested();
+}
+
+void Robot_AS::moveJointPreempted(){
+    sun_robot_msgs::MoveJointsResult move_joints_result;
+    move_joints_result.success = true;
+    move_joints_result.msg = "Preempted";
+    _move_joint_as.setPreempted(move_joints_result);
+}
+
+void Robot_AS::moveJointSuccess(){
+    sun_robot_msgs::MoveJointsResult move_joints_result;
+    move_joints_result.success = true;
+    move_joints_result.msg = "Compleate";
+    _move_joint_as.setSucceeded(move_joints_result);
+}
+
+void Robot_AS::executeMoveJointCB( const sun_robot_msgs::MoveJointsGoalConstPtr &goal ){
+
+    if(_b_action_running){
+        moveJointAbort("Another action is running");
+        return;
+    }
+
+    _b_action_running = true;
+
+    //CHECK
+    if( (goal->desired_positions.size()!=_num_joints) ||
+        (goal->durations.size()!=_num_joints) ||
+        (goal->start_times.size()!=_num_joints) ||
+        (goal->initial_velocities.size()!=_num_joints) ||
+        (goal->final_velocities.size()!=_num_joints) ||
+        (goal->initial_accelerations.size()!=_num_joints) ||
+        (goal->final_accelerations.size()!=_num_joints) ){
+
+        cout << HEADER_PRINT BOLDRED "Joint size mismatch" CRESET << endl;
+        moveJointAbort("Joint size mismatch");
+        releaseResource();
+        return;
+
+    }
+
+    //GET INITIAL POSITION!
+    if( !updateActualStatus(true) ){
+        cout << HEADER_PRINT BOLDRED "Failed to update Status" CRESET << endl;
+        moveJointAbort("Failed to update Status");
+        releaseResource();
+        return;
+    }
+
+    //Build trajectory
+    Vector_Independent_Traj total_traj;
+    for(int i = 0; i<_num_joints; i++){
+        total_traj.push_back_traj(
+            Quintic_Poly_Traj(   
+                goal->durations[i], //duration
+                _actual_qR[i], //pi
+                goal->desired_positions[i], //pf
+                goal->start_times[i], //ti                           
+                goal->initial_velocities[i], //vi
+                goal->final_velocities[i],  //vf
+                goal->initial_accelerations[i], //ai 
+                goal->final_accelerations[i] //af
+            )
+        );
+    }
+
+    executeMoveJointGeneralCB( 
+                                total_traj,
+                                goal->start_delay,
+                                goal->steady_state_thr,
+                                boost::bind(&Robot_AS::moveJointSuccess, this),
+                                boost::bind(&Robot_AS::moveJointPublishFeedback, this, _1, _2),
+                                boost::bind(&Robot_AS::moveJointIsPreemptRequested, this),
+                                boost::bind(&Robot_AS::moveJointPreempted, this),
+                                boost::bind(&Robot_AS::moveJointAbort, this, _1) 
+                                );
+
+}
+
+/*
+#goal definition
+float64[] desired_positions
+float64 max_cruise_speed
+float64 start_delay
+float64 steady_state_thr
+---
+#result definition
+bool success
+string msg
+---
+#feedback
+float64[] positions
+float64[] velocities
+*/
+
+void Robot_AS::simpleMoveJointAbort( const string& msg ){
+    sun_robot_msgs::SimpleMoveJointsResult move_joints_result;
+    move_joints_result.success = false;
+    move_joints_result.msg = msg;
+    _simple_move_joint_as.setAborted(move_joints_result);
+}
+
+void Robot_AS::simpleMoveJointPublishFeedback( const Vector<>& qR, const Vector<>& dqR ){
+    for(int i=0; i<_num_joints; i++){
+        _simple_move_joints_feedback.positions[i] = qR[i];
+        _simple_move_joints_feedback.velocities[i] = dqR[i];
+    }
+    _simple_move_joint_as.publishFeedback(_simple_move_joints_feedback);
+}
+
+bool Robot_AS::simpleMoveJointIsPreemptRequested(){
+    return _simple_move_joint_as.isPreemptRequested();
+}
+
+void Robot_AS::simpleMoveJointPreempted(){
+    sun_robot_msgs::SimpleMoveJointsResult move_joints_result;
+    move_joints_result.success = true;
+    move_joints_result.msg = "Preempted";
+    _simple_move_joint_as.setPreempted(move_joints_result);
+}
+
+void Robot_AS::simpleMoveJointSuccess(){
+    sun_robot_msgs::SimpleMoveJointsResult move_joints_result;
+    move_joints_result.success = true;
+    move_joints_result.msg = "Compleate";
+    _simple_move_joint_as.setSucceeded(move_joints_result);
+}
+
+void Robot_AS::executeSimpleMoveJointCB( const sun_robot_msgs::SimpleMoveJointsGoalConstPtr &goal ){
+
+    if(_b_action_running){
+        simpleMoveJointAbort("Another action is running");
+        return;
+    }
+
+    _b_action_running = true;
+
+    //CHECK
+    if( goal->desired_positions.size()!=_num_joints ){
+
+        cout << HEADER_PRINT BOLDRED "Joint size mismatch" CRESET << endl;
+        simpleMoveJointAbort("Joint size mismatch");
+        releaseResource();
+        return;
+
+    }
+
+    //GET INITIAL POSITION!
+    if( !updateActualStatus(true) ){
+        cout << HEADER_PRINT BOLDRED "Failed to update Status" CRESET << endl;
+        simpleMoveJointAbort("Failed to update Status");
+        releaseResource();
+        return;
+    }
+
+    Vector<> q_desired = wrapVector( goal->desired_positions.data(), goal->desired_positions.size() );
+    double duration = max( abs( _actual_qR - q_desired ) )/goal->max_cruise_speed;
+
+    //Build trajectory
+    Vector_Independent_Traj total_traj;
+    for(int i = 0; i<_num_joints; i++){
+        total_traj.push_back_traj(
+            Quintic_Poly_Traj(   
+                duration, //duration
+                _actual_qR[i], //pi
+                goal->desired_positions[i], //pf
+                0.0, //ti                           
+                0.0, //vi
+                0.0,  //vf
+                0.0, //ai 
+                0.0 //af
+            )
+        );
+    }
+
+    executeMoveJointGeneralCB( 
+                                total_traj,
+                                goal->start_delay,
+                                goal->steady_state_thr,
+                                boost::bind(&Robot_AS::simpleMoveJointSuccess, this),
+                                boost::bind(&Robot_AS::simpleMoveJointPublishFeedback, this, _1, _2),
+                                boost::bind(&Robot_AS::simpleMoveJointIsPreemptRequested, this),
+                                boost::bind(&Robot_AS::simpleMoveJointPreempted, this),
+                                boost::bind(&Robot_AS::simpleMoveJointAbort, this, _1) 
+                                );
+
+}
+
+/*
+    CB that execute the joints trajectory
+*/
+void Robot_AS::executeMoveJointGeneralCB( 
+                                Vector_Traj_Interface& traj,
+                                double start_delay,
+                                double steady_state_thr,
+                                const boost::function< void() >& successFcn,
+                                const boost::function< void(const Vector<>&,const Vector<>&) >& publishFeedbackFcn,
+                                const boost::function< bool() >& isPreemptRequestedFcn,
+                                const boost::function< void() >& preemptedFcn,
+                                const boost::function< void(const string&) >& abortFcn 
+                                ){
+
+    //SET CLIK MODE JOINTS
+    if( !clikSetMode(sun_robot_msgs::ClikSetMode::Request::MODE_JOINT) ){
+        cout << HEADER_PRINT BOLDRED "Failed to set Clik Mode!" CRESET << endl;
+        abortFcn("Failed to set Clik Mode");
+        releaseResource();
+        return;
+    }
+
+    ros::Rate loop_rate(_hz);
+    double time_now = ros::Time::now().toSec();
+
+    traj.changeInitialTime( time_now + start_delay );
+    cout << HEADER_PRINT GREEN "Start Joint Trajectory..." CRESET << endl;
+    while( ros::ok() && !_b_action_preempted && !traj.isCompleate(time_now) ){
+
+        ros::spinOnce();
+
+        //check preempt
+        if (isPreemptRequestedFcn()){
+            _b_action_preempted = true;
+            break;
+        }
+
+        time_now = ros::Time::now().toSec();
+
+        Vector<> qR = traj.getPosition(  time_now );
+        Vector<> dqR = traj.getVelocity(  time_now );
+
+        publishQR(qR,dqR);
+
+        publishFeedbackFcn(qR,dqR);
+
+        loop_rate.sleep();
+
+    }
+
+    //whait steady state
+    if( steady_state_thr!=0 && !_b_action_preempted ){
+        cout << HEADER_PRINT YELLOW "Joint Trajectory compleate, waiting for steady state..." CRESET << endl;
+
+        double error_steady = INFINITY;
+
+        Vector<> qR_final = traj.getPosition(  time_now );
+        Vector<> dqR_final = traj.getVelocity(  time_now );
+
+        while(ros::ok() && !_b_action_preempted && fabs(error_steady)>steady_state_thr ){
+
+            ros::spinOnce();
+
+            //check preempt
+            if (isPreemptRequestedFcn()){
+                _b_action_preempted = true;
+                break;
+            }
+
+            if( !updateActualStatus(true) ){
+                cout << HEADER_PRINT BOLDRED "Failed to update Status" CRESET << endl;
+                abortFcn("Failed to update Status");
+                releaseResource();
+                return;
+            }
+
+            error_steady = norm( qR_final - _actual_qR );
+
+            publishQR(qR_final,dqR_final);
+            
+            publishFeedbackFcn(qR_final,qR_final);
+
+            loop_rate.sleep();
+
+        }
+
+    }
+
+    if(_b_action_preempted){
+        cout << HEADER_PRINT BOLDYELLOW "Joint Trajectory PREEMPTED!" CRESET << endl;
+        preemptedFcn();
+    } else{
+        cout << HEADER_PRINT BOLDGREEN "Joint Trajectory Compleate!" CRESET << endl;
+        successFcn();
+    }
+
+    releaseResource();
+
+}
+
+void Robot_AS::publishQR( const Vector<>& qR, const Vector<>& dqR ){
+
+    sun_robot_msgs::JointPositionVelocityStamped out_msg;
+
+    out_msg.position.resize(_num_joints);
+    out_msg.velocity.resize(_num_joints);
+
+    for(int i=0; i<_num_joints; i++){
+        out_msg.position[i] = qR[i];
+        out_msg.velocity[i] = dqR[i];
+    }
+
+    out_msg.header.frame_id = "robot_as_joints_trajectory";
+    out_msg.header.stamp = ros::Time::now();
+
+    _pub_joints.publish(out_msg);
+
+}
+
+/*************************************
+    END Action MoveJoint
+***************************************/
+
+
+/*************************************
+    Action MoveCartesian
+***************************************/
+
+/*
+#goal definition
+
+uint8 MODE_ABS_BASE=0
+uint8 MODE_REL_BASE=1
+uint8 MODE_REL_TOOL=2
+uint8 mode
+
+geometry_msgs/Vector3 translation
+float64 translation_duration
+float64 translation_initial_velocity
+float64 translation_final_velocity
+float64 translation_initial_acceleration
+float64 translation_final_acceleration
+float64 translation_start_time
+
+geometry_msgs/Vector3 rotation_axis
+float64 rotation_angle
+float64 rotation_duration
+float64 rotation_initial_velocity
+float64 rotation_final_velocity
+float64 rotation_initial_acceleration
+float64 rotation_final_acceleration
+float64 rotation_start_time
+
+float64 start_delay
+float64 steady_state_thr
+---
+#result definition
+bool success
+string msg
+---
+#feedback
+geometry_msgs/Pose pose
+geometry_msgs/Twist twist
+*/
+
+void Robot_AS::moveLineSegmentAbort( const string& msg ){
+    sun_robot_msgs::MoveLineSegmentResult move_line_segment_result;
+    move_line_segment_result.success = false;
+    move_line_segment_result.msg = msg;
+    _move_line_segment_as.setAborted(move_line_segment_result);
+}
+
+void Robot_AS::moveLineSegmentPublishFeedback(    
+                                        const Vector<3>& pos,
+                                        const UnitQuaternion& quat,
+                                        const Vector<3>& vel,
+                                        const Vector<3>& w){
+
+    _move_line_segment_feedback.pose.position.x = pos[0];
+    _move_line_segment_feedback.pose.position.y = pos[1];
+    _move_line_segment_feedback.pose.position.z = pos[2];
+
+    _move_line_segment_feedback.pose.orientation.w = quat.getS(); 
+    Vector<3> quat_v = quat.getV();
+    _move_line_segment_feedback.pose.orientation.x = quat_v[0];
+    _move_line_segment_feedback.pose.orientation.y = quat_v[1];
+    _move_line_segment_feedback.pose.orientation.z = quat_v[2];
+                
+    _move_line_segment_feedback.twist.linear.x = vel[0];
+    _move_line_segment_feedback.twist.linear.y = vel[1];
+    _move_line_segment_feedback.twist.linear.z = vel[2];
+
+    _move_line_segment_feedback.twist.angular.x = w[0];
+    _move_line_segment_feedback.twist.angular.y = w[1];
+    _move_line_segment_feedback.twist.angular.z = w[2];
+
+    _move_line_segment_as.publishFeedback(_move_line_segment_feedback);
+}
+
+bool Robot_AS::moveLineSegmentIsPreemptRequested(){
+    return _move_line_segment_as.isPreemptRequested();
+}
+
+void Robot_AS::moveLineSegmentPreempted(){
+    sun_robot_msgs::MoveLineSegmentResult move_line_segment_result;
+    move_line_segment_result.success = true;
+    move_line_segment_result.msg = "Preempted";
+    _move_line_segment_as.setPreempted(move_line_segment_result);
+}
+
+void Robot_AS::moveLineSegmentSuccess(){
+    sun_robot_msgs::MoveLineSegmentResult move_line_segment_result;
+    move_line_segment_result.success = true;
+    move_line_segment_result.msg = "Compleate";
+    _move_line_segment_as.setSucceeded(move_line_segment_result);
+}
+
+void Robot_AS::executeMoveLineSegmentCB( const sun_robot_msgs::MoveLineSegmentGoalConstPtr &goal ){
+
+    if(_b_action_running){
+        moveLineSegmentAbort("Another action is running");
+        return;
+    }
+
+    _b_action_running = true;
+
+    //GET INITIAL POSITION!
+    if( !updateActualStatus(true) ){
+        cout << HEADER_PRINT BOLDRED "Failed to update Status" CRESET << endl;
+        moveLineSegmentAbort("Failed to update Status");
+        releaseResource();
+        return;
+    }
+
+    //Set Traj Mode
+    Vector<3> pf = makeVector(
+                    goal->translation.x,
+                    goal->translation.z,
+                    goal->translation.y
+                    );
+    Vector<3> rotation_axis = makeVector(
+                                goal->rotation_axis.x,
+                                goal->rotation_axis.z,
+                                goal->rotation_axis.y
+                                );
+    switch(goal->mode){
+        case sun_robot_msgs::MoveLineSegmentGoal::MODE_ABS_BASE:{
+            //OK
+            break;
+        }
+        case sun_robot_msgs::MoveLineSegmentGoal::MODE_REL_BASE:{
+            pf = _actual_position + pf;            
+            break;
+        }
+        case sun_robot_msgs::MoveLineSegmentGoal::MODE_REL_TOOL:{
+            Matrix<4,4> b_T_e = Identity;
+            b_T_e.slice<0,0,3,3>() = _actual_quaternion.torot();
+            b_T_e.T()[3].slice<0,3>() = _actual_position;
+
+            Vector<4> pf_tilde = Ones;
+            pf_tilde.slice<0,3>() = pf;
+            pf_tilde = b_T_e*pf_tilde;
+            pf = pf_tilde.slice<0,3>();
+
+            rotation_axis = b_T_e.slice<0,0,3,3>() * rotation_axis;
+
+            break;
+        }
+        default:{
+            cout << HEADER_PRINT BOLDRED "MoveLineSegment Invalid Mode" CRESET << endl;
+            moveLineSegmentAbort("Invalid Mode");
+            releaseResource();
+            return;
+        }
+    }
+
+    //Build Traj
+    double scalar_traj_scale = norm(pf-_actual_position);
+    Cartesian_Independent_Traj cart_traj( 
+            //LineTraj
+            Line_Segment_Traj( 
+                _actual_position,//pi
+                pf,//pf
+                //Scalar Traj
+                Quintic_Poly_Traj(   
+                    goal->translation_duration,//duration
+                    0.0,//double initial_position,
+                    1.0,//double final_position,
+                    goal->translation_start_time,                            
+                    goal->translation_initial_velocity/scalar_traj_scale, 
+                    goal->translation_final_velocity/scalar_traj_scale,
+                    goal->translation_initial_acceleration/scalar_traj_scale, 
+                    goal->translation_final_acceleration/scalar_traj_scale
+                    )
+            )   
+            , 
+            //Rotation Traj
+            Rotation_Const_Axis_Traj( 
+                _actual_quaternion,// initial_quat, 
+                rotation_axis,//axis,
+                Quintic_Poly_Traj(   
+                    goal->rotation_duration,//duration
+                    0.0,//double initial_position,
+                    goal->rotation_angle,//double final_position,
+                    goal->rotation_start_time,                            
+                    goal->rotation_initial_velocity, 
+                    goal->rotation_final_velocity,
+                    goal->rotation_initial_acceleration, 
+                    goal->rotation_final_acceleration
+                    )
+            )
+    );
+
+    executeMoveCartesianGeneralCB( 
+                                cart_traj,
+                                goal->start_delay,
+                                goal->steady_state_thr,
+                                boost::bind(&Robot_AS::moveLineSegmentSuccess, this),
+                                boost::bind(&Robot_AS::moveLineSegmentPublishFeedback, this, _1, _2,_3,_4),
+                                boost::bind(&Robot_AS::moveLineSegmentIsPreemptRequested, this),
+                                boost::bind(&Robot_AS::moveLineSegmentPreempted, this),
+                                boost::bind(&Robot_AS::moveLineSegmentAbort, this, _1) 
+                                );
+
+}
+
+/*
+    CB that execute the joints trajectory
+*/
+void Robot_AS::executeMoveCartesianGeneralCB( 
+                                Cartesian_Traj_Interface& traj,
+                                double start_delay,
+                                double steady_state_thr,
+                                const boost::function< void() >& successFcn,
+                                const boost::function< void(const Vector<3>&,const UnitQuaternion&,const Vector<3>&,const Vector<3>&) >& publishFeedbackFcn,
+                                const boost::function< bool() >& isPreemptRequestedFcn,
+                                const boost::function< void() >& preemptedFcn,
+                                const boost::function< void(const string&) >& abortFcn 
+                                ){
+
+    //SET CLIK MODE JOINTS
+    if( !clikSetMode(sun_robot_msgs::ClikSetMode::Request::MODE_CLIK) ){
+        cout << HEADER_PRINT BOLDRED "Failed to set Clik Mode!" CRESET << endl;
+        abortFcn("Failed to set Clik Mode");
+        releaseResource();
+        return;
+    }
+
+    ros::Rate loop_rate(_hz);
+    double time_now = ros::Time::now().toSec();
+
+    traj.changeInitialTime( time_now + start_delay );
+    cout << HEADER_PRINT GREEN "Start Cartesian Trajectory..." CRESET << endl;
+    while( ros::ok() && !_b_action_preempted && !traj.isCompleate(time_now) ){
+
+        ros::spinOnce();
+
+        //check preempt
+        if (isPreemptRequestedFcn()){
+            _b_action_preempted = true;
+            break;
+        }
+
+        time_now = ros::Time::now().toSec();
+
+        Vector<3> pos = traj.getPosition(  time_now );
+        UnitQuaternion quaternion = traj.getQuaternion(  time_now );
+        Vector<3> vel = traj.getLinearVelocity(  time_now );
+        Vector<3> w = traj.getAngularVelocity(  time_now );
+        
+        
+        publishCartesian(pos,quaternion,vel,w);
+
+        publishFeedbackFcn(pos,quaternion,vel,w);
+
+        loop_rate.sleep();
+
+    }
+
+    //whait steady state
+    if( steady_state_thr!=0 && !_b_action_preempted ){
+        cout << HEADER_PRINT YELLOW "Cartesian Trajectory compleate, waiting for steady state..." CRESET << endl;
+
+        Vector<6> error;
+        double error_steady = INFINITY;
+
+        Vector<3> pos_final = traj.getPosition(  time_now );
+        UnitQuaternion quaternion_final = traj.getQuaternion(  time_now );
+        Vector<3> vel_final = traj.getLinearVelocity(  time_now );
+        Vector<3> w_final = traj.getAngularVelocity(  time_now );
+
+        while(ros::ok() && !_b_action_preempted && fabs(error_steady)>steady_state_thr ){
+
+            ros::spinOnce();
+
+            //check preempt
+            if (isPreemptRequestedFcn()){
+                _b_action_preempted = true;
+                break;
+            }
+
+            if( !updateActualStatus(true) ){
+                cout << HEADER_PRINT BOLDRED "Failed to update Status" CRESET << endl;
+                abortFcn("Failed to update Status");
+                releaseResource();
+                return;
+            }
+
+            //Position error
+            error.slice<0,3>() = pos_final - _actual_position;
+            //orientationError
+            UnitQuaternion deltaQ = quaternion_final/_actual_quaternion;
+            error.slice<3,3>() = deltaQ.getV();
+
+            error_steady = norm( error );
+
+            publishCartesian(pos_final,quaternion_final,vel_final,w_final);
+
+            publishFeedbackFcn(pos_final,quaternion_final,vel_final,w_final);
+
+            loop_rate.sleep();
+
+        }
+
+    }
+
+    if(_b_action_preempted){
+        cout << HEADER_PRINT BOLDYELLOW "Cartesian Trajectory PREEMPTED!" CRESET << endl;
+        preemptedFcn();
+    } else{
+        cout << HEADER_PRINT BOLDGREEN "Cartesian Trajectory Compleate!" CRESET << endl;
+        successFcn();
+    }
+
+    releaseResource();
+
+}
+
+void Robot_AS::publishCartesian(const Vector<3>& pos, const UnitQuaternion& quat, const Vector<3>& vel, const Vector<3>& w){
+
+    sun_robot_msgs::PoseTwistStamped out_msg;
+
+    out_msg.pose.position.x = pos[0];
+    out_msg.pose.position.y = pos[1];
+    out_msg.pose.position.z = pos[2];
+
+    out_msg.pose.orientation.w = quat.getS(); 
+    Vector<3> quat_v = quat.getV();
+    out_msg.pose.orientation.x = quat_v[0];
+    out_msg.pose.orientation.y = quat_v[1];
+    out_msg.pose.orientation.z = quat_v[2];
+                
+    out_msg.twist.linear.x = vel[0];
+    out_msg.twist.linear.y = vel[1];
+    out_msg.twist.linear.z = vel[2];
+
+    out_msg.twist.angular.x = w[0];
+    out_msg.twist.angular.y = w[1];
+    out_msg.twist.angular.z = w[2];
+
+    out_msg.header.frame_id = "robot_as_cartesian_trajectory";
+    out_msg.header.stamp = ros::Time::now();
+
+    _pub_cartesian.publish(out_msg);
+
+}
+
+
+/*************************************
+    END Action MoveCartesian
+***************************************/

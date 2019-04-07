@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
     roscpp
     sun_robot_msgs
     std_srvs
+    actionlib
 )
 
 ## System dependencies are found with CMake's conventions
@@ -106,7 +107,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ${PROJECT_NAME}
-  CATKIN_DEPENDS sun_robot_lib sun_robot_msgs std_srvs
+  CATKIN_DEPENDS sun_robot_lib sun_robot_msgs std_srvs actionlib
 #  DEPENDS system_lib
 )
 
@@ -124,6 +125,7 @@ include_directories(
 ## Declare a C++ library
  add_library(${PROJECT_NAME}
    src/${PROJECT_NAME}/CLIK_Node.cpp
+   src/${PROJECT_NAME}/Robot_AS.cpp
  )
 
 ## Add cmake target dependencies of the library

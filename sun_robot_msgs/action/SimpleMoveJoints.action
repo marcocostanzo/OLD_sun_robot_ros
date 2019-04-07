@@ -1,0 +1,13 @@
+#goal definition
+float64[] desired_positions
+float64 max_cruise_speed
+float64 start_delay
+float64 steady_state_thr
+---
+#result definition
+bool success
+string msg
+---
+#feedback
+float64[] positions
+float64[] velocities
