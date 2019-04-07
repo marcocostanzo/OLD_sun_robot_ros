@@ -126,7 +126,7 @@ sun_robot_msgs::MoveLineSegmentFeedback _move_line_segment_feedback;
 public:
 
 Robot_AS(
-    int num_joints,
+    unsigned int num_joints,
     const ros::NodeHandle& nh,
     double hz,
     const std::string& service_clik_status,
@@ -141,9 +141,17 @@ Robot_AS(
 );
 
 /*
+Robot_AS(
+    unsigned int num_joints,
+    const ros::NodeHandle& nh,
+    const ros::NodeHandle& nh_for_parmas
+);
+*/
+
+/*
     Start the server
 */
-void sart();
+void start();
 
 protected:
 

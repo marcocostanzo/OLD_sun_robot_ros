@@ -55,7 +55,7 @@ using namespace std;
 using namespace TooN;
 
 Robot_AS::Robot_AS(
-    int num_joints,
+    unsigned int num_joints,
     const ros::NodeHandle& nh,
     double hz,
     const string& service_clik_status,
@@ -90,13 +90,59 @@ _actual_qR(Zeros(_num_joints))
     _simple_move_joints_feedback.velocities.resize(_num_joints);
 }
 
+/*Robot_AS::Robot_AS(
+    unsigned int num_joints,
+    const ros::NodeHandle& nh,
+    const ros::NodeHandle& nh_for_parmas
+)
+:_num_joints(num_joints),
+_nh(nh),
+_b_action_running(false),
+_b_action_preempted(false),
+_actual_qR(Zeros(_num_joints))
+{
+
+    nh_for_parmas.param("hz" , _hz, 1000.0 );
+    nh_for_parmas.param("action_move_joint" , _move_joint_action_str, string("move_joint") );
+    nh_for_parmas.param("action_simple_move_joint" , _simple_move_joint_action_str, string("simple_move_joint") );
+    nh_for_parmas.param("action_line_segment" , _move_line_segment_action_str, string("line_segment") );
+
+    string service_clik_status;    
+    nh_for_parmas.param("service_get_clik_status" , service_clik_status, string("clik/get_status") );
+    string service_set_clik_mode;    
+    nh_for_parmas.param("service_set_clik_mode" , service_set_clik_mode, string("clik/set_mode") );
+    string topic_joints_command;    
+    nh_for_parmas.param("topic_joints_command" , topic_joints_command, string("joints_command") );
+    string topic_cartesian_command;  
+    nh_for_parmas.param("topic_cartesian_command" , topic_cartesian_command, string("cartesian_command") );
+
+    _move_joint_as = actionlib::SimpleActionServer<sun_robot_msgs::MoveJointsAction>(_nh, _move_joint_action_str, boost::bind(&Robot_AS::executeMoveJointCB, this, _1), false)
+    _simple_move_joint_as = actionlib::SimpleActionServer<sun_robot_msgs::SimpleMoveJointsAction>(_nh, _simple_move_joint_action_str, boost::bind(&Robot_AS::executeSimpleMoveJointCB, this, _1), false)
+    _move_line_segment_as = actionlib::SimpleActionServer<sun_robot_msgs::MoveLineSegmentAction>(_nh, _move_line_segment_action_str, boost::bind(&Robot_AS::executeMoveLineSegmentCB, this, _1), false)
+
+    _serviceGetClikStatus = _nh.serviceClient<sun_robot_msgs::ClikStatus>(service_clik_status);
+    _serviceSetClikMode = _nh.serviceClient<sun_robot_msgs::ClikSetMode>(service_set_clik_mode);
+    _pub_joints = _nh.advertise<sun_robot_msgs::JointPositionVelocityStamped>(topic_joints_command, 1);
+    _pub_cartesian = _nh.advertise<sun_robot_msgs::PoseTwistStamped>(topic_cartesian_command, 1);
+    
+    _move_joints_feedback.positions.resize(_num_joints);
+    _move_joints_feedback.velocities.resize(_num_joints);
+    _simple_move_joints_feedback.positions.resize(_num_joints);
+    _simple_move_joints_feedback.velocities.resize(_num_joints);
+}*/
+
 /*
     Start the server
 */
-void Robot_AS::sart(){
+void Robot_AS::start(){
+    cout << HEADER_PRINT YELLOW "Wait for servers..." CRESET << endl;
+    _serviceGetClikStatus.waitForExistence();
+    _serviceSetClikMode.waitForExistence();
+    cout << HEADER_PRINT GREEN "Servers online!" CRESET << endl;
     _move_joint_as.start();
     _simple_move_joint_as.start();
     _move_line_segment_as.start();
+    cout << HEADER_PRINT GREEN "STARTED!" CRESET << endl;
 }
 
 /*************************************

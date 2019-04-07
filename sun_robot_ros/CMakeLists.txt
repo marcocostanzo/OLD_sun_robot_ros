@@ -200,3 +200,14 @@ include_directories(
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
+
+#########################################
+add_executable(robot_as
+  src/robot_as_node.cpp
+)
+add_dependencies(robot_as ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(robot_as
+  ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)
+#########################################
