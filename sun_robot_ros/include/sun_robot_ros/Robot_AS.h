@@ -79,6 +79,10 @@ ros::ServiceClient _serviceSetClikMode;
 ros::Publisher _pub_joints;
 ros::Publisher _pub_cartesian;
 
+//Force Controller
+bool _b_force_controller_active = false;
+TooN::Vector<3> _delta_pos_force_controller = TooN::Zeros;
+
 /*************************************
     Action MoveJoint
 ***************************************/
@@ -162,6 +166,7 @@ protected:
 TooN::Vector<3> _actual_position;
 UnitQuaternion _actual_quaternion;
 TooN::Vector<> _actual_qR;
+TooN::Vector<6> _actual_clik_error;
 bool updateActualStatus( bool b_refresh = false );
 
 bool clikSetMode( uint8_t clik_mode );

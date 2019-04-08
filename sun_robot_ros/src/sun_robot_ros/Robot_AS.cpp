@@ -151,6 +151,11 @@ void Robot_AS::start(){
 
 bool Robot_AS::updateActualStatus( bool b_refresh ){
 
+    if(_b_force_controller_active){
+        //Non so se serve... ma per evitare discontinuità lo farei...
+        b_refresh = false;
+    }
+
     sun_robot_msgs::ClikStatus status_msg;
 
     status_msg.request.refresh = b_refresh;
@@ -184,11 +189,26 @@ bool Robot_AS::updateActualStatus( bool b_refresh ){
         _actual_qR[i] = status_msg.response.qR[i];
     }
 
+    _actual_clik_error[0] = status_msg.response.clik_error[0];
+    _actual_clik_error[1] = status_msg.response.clik_error[1];
+    _actual_clik_error[2] = status_msg.response.clik_error[2];
+    _actual_clik_error[3] = status_msg.response.clik_error[3];
+    _actual_clik_error[4] = status_msg.response.clik_error[4];
+    _actual_clik_error[5] = status_msg.response.clik_error[5];
+
+    if(_b_force_controller_active){
+        //Prendi il delta attuale del controllore e correggi l'actual_position
+    }
+
     return true;
     
 }
 
 bool Robot_AS::clikSetMode( uint8_t clik_mode ){
+
+    if(_b_force_controller_active){//nb potrebbe venire da servizio invece di essere una variabile
+        //Controlli sulla modalità...
+    }
 
     sun_robot_msgs::ClikSetMode setmode_msg;
 
@@ -829,7 +849,6 @@ void Robot_AS::executeMoveCartesianGeneralCB(
     if( steady_state_thr!=0 && !_b_action_preempted ){
         cout << HEADER_PRINT YELLOW "Cartesian Trajectory compleate, waiting for steady state..." CRESET << endl;
 
-        Vector<6> error;
         double error_steady = INFINITY;
 
         Vector<3> pos_final = traj.getPosition(  time_now );
@@ -854,13 +873,7 @@ void Robot_AS::executeMoveCartesianGeneralCB(
                 return;
             }
 
-            //Position error
-            error.slice<0,3>() = pos_final - _actual_position;
-            //orientationError
-            UnitQuaternion deltaQ = quaternion_final/_actual_quaternion;
-            error.slice<3,3>() = deltaQ.getV();
-
-            error_steady = norm( error );
+            error_steady = norm( _actual_clik_error );
 
             publishCartesian(pos_final,quaternion_final,vel_final,w_final);
 

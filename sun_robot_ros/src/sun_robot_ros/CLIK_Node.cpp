@@ -255,7 +255,7 @@ bool CLIK_Node::setMode(sun_robot_msgs::ClikSetMode::Request  &req,
 bool CLIK_Node::getStatus(sun_robot_msgs::ClikStatus::Request  &req, 
    		 		sun_robot_msgs::ClikStatus::Response &res){
 
-    if(req.refresh){
+    if(req.refresh || _mode == sun_robot_msgs::ClikSetMode::Request::MODE_STOP){
         refresh();
     }
 
@@ -263,13 +263,16 @@ bool CLIK_Node::getStatus(sun_robot_msgs::ClikStatus::Request  &req,
 
     res.qR.resize(_robot->getNumJoints());
     Vector<> qR = _robot->joints_DH2Robot(_qDH_k);
-    res.qR[0] = qR[0];
-    res.qR[1] = qR[1];
-    res.qR[2] = qR[2];
-    res.qR[3] = qR[3];
-    res.qR[4] = qR[4];
-    res.qR[5] = qR[5];
-    res.qR[6] = qR[6];
+    for( int i=0; i<_robot->getNumJoints(); i++ ){
+        res.qR[i] = qR[i];
+    }
+
+    res.clik_error[0] = _error[0];
+    res.clik_error[1] = _error[1];
+    res.clik_error[2] = _error[2];
+    res.clik_error[3] = _error[3];
+    res.clik_error[4] = _error[4];
+    res.clik_error[5] = _error[5];
 
     Matrix<4,4> b_T_e = _robot->fkine(_qDH_k);
     Vector<3> pos = transl(b_T_e);
@@ -338,7 +341,7 @@ void CLIK_Node::refresh(){
     _w_d = Zeros;
     _oldQ = UnitQuaternion(_quat_d);
     _dqDH = Zeros(_robot->getNumJoints());
-    _error = Ones;
+    _error = Zeros;
     cout << HEADER_PRINT GREEN "Initialized!" << CRESET << endl;
 }
 

@@ -3,4 +3,5 @@ bool refresh
 int8 mode
 geometry_msgs/Pose pose
 float32[] qR
+float32[6] clik_error
 bool success
