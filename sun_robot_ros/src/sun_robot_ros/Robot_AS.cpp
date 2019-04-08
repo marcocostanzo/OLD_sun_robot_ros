@@ -703,13 +703,13 @@ void Robot_AS::executeMoveLineSegmentCB( const sun_robot_msgs::MoveLineSegmentGo
     //Set Traj Mode
     Vector<3> pf = makeVector(
                     goal->translation.x,
-                    goal->translation.z,
-                    goal->translation.y
+                    goal->translation.y,
+                    goal->translation.z
                     );
     Vector<3> rotation_axis = makeVector(
                                 goal->rotation_axis.x,
-                                goal->rotation_axis.z,
-                                goal->rotation_axis.y
+                                goal->rotation_axis.y,
+                                goal->rotation_axis.z
                                 );
     switch(goal->mode){
         case sun_robot_msgs::MoveLineSegmentGoal::MODE_ABS_BASE:{

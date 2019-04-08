@@ -13,6 +13,10 @@ int main(int argc, char *argv[])
     //params
     int num_joints;
     nh_private.param("num_joints" , num_joints, 0 );
+    if(num_joints < 1){
+        cout << "ERROR! invalid num_joints: " << num_joints << endl;
+        exit(-1);
+    }
     double hz;
     nh_private.param("hz" , hz, 1000.0 );
     string move_joint_action_str;
@@ -26,9 +30,9 @@ int main(int argc, char *argv[])
     string service_set_clik_mode;    
     nh_private.param("service_set_clik_mode" , service_set_clik_mode, string("clik/set_mode") );
     string topic_joints_command;    
-    nh_private.param("topic_joints_command" , topic_joints_command, string("joints_command") );
+    nh_private.param("topic_joints_command" , topic_joints_command, string("clik/desired_q") );
     string topic_cartesian_command;  
-    nh_private.param("topic_cartesian_command" , topic_cartesian_command, string("cartesian_command") );
+    nh_private.param("topic_cartesian_command" , topic_cartesian_command, string("clik/desired_pose_twist") );
 
     Robot_AS robot_as(
         num_joints,

@@ -114,11 +114,11 @@ CLIK_Node::CLIK_Node(
     _loop_rate(1000.0)
 {
     //params
-    nh_for_parmas.param("desired_pose_twist_topic" , _desired_pose_twist_topic_str, string("desired_pose_twist") );
-    nh_for_parmas.param("desired_q_topic" , _desired_q_topic_str, string("desired_q") );
-    nh_for_parmas.param("set_mode_service" , _service_set_mode_str, string("set_mode") );
-    nh_for_parmas.param("get_status_service" , _service_get_status_str, string("get_status") );
-    nh_for_parmas.param("set_params_service" , _service_set_params_str, string("set_params") );
+    nh_for_parmas.param("desired_pose_twist_topic" , _desired_pose_twist_topic_str, string("clik/desired_pose_twist") );
+    nh_for_parmas.param("desired_q_topic" , _desired_q_topic_str, string("clik/desired_q") );
+    nh_for_parmas.param("set_mode_service" , _service_set_mode_str, string("clik/set_mode") );
+    nh_for_parmas.param("get_status_service" , _service_get_status_str, string("clik/get_status") );
+    nh_for_parmas.param("set_params_service" , _service_set_params_str, string("clik/set_params") );
     nh_for_parmas.param("clik_gain" , _clik_gain, 0.5 );
     nh_for_parmas.param("hz" , _hz, 1000.0 );
     _loop_rate = ros::Rate(_hz);
@@ -127,45 +127,71 @@ CLIK_Node::CLIK_Node(
     _robot->setDLSJointSpeedSaturation(dls_joint_speed_saturation);
     nh_for_parmas.param("second_obj_gain" , _second_obj_gain, 0.0 );
 
-    vector<double> joint_target_robot_std;
-    nh_for_parmas.getParam("joint_target_robot", joint_target_robot_std);
-    if(joint_target_robot_std.size() != _robot->getNumJoints()){
-        cout << HEADER_PRINT BOLDRED "Error: joint_target_robot size mismatch" CRESET << endl;
-        exit(-1);
+    if(nh_for_parmas.hasParam("joint_target_robot")){
+        vector<double> joint_target_robot_std;
+        nh_for_parmas.getParam("joint_target_robot", joint_target_robot_std);
+        if(joint_target_robot_std.size() != _robot->getNumJoints()){
+            cout << HEADER_PRINT BOLDRED "Error: joint_target_robot size mismatch" CRESET << endl;
+            exit(-1);
+        }
+        _joint_target_dh = _robot->joints_Robot2DH( wrapVector(joint_target_robot_std.data(), joint_target_robot_std.size()) );
+    } else {
+        for(int i=0; i<_robot->getNumJoints(); i++){
+            _joint_target_dh[i] = (_robot->getLink(i)->getSoftJointLimits()[1] + _robot->getLink(i)->getSoftJointLimits()[0])/2.0 ;
+        }
+        _joint_target_dh = _robot->joints_Robot2DH(_joint_target_dh);
     }
-    _joint_target_dh = _robot->joints_Robot2DH( wrapVector(joint_target_robot_std.data(), joint_target_robot_std.size()) );
+    cout << HEADER_PRINT "Target conf: " << _joint_target_dh << endl;
 
-    vector<double> joint_weights_std;
-    nh_for_parmas.getParam("joint_weights", joint_weights_std);
-    if(joint_weights_std.size() != _robot->getNumJoints()){
-        cout << HEADER_PRINT BOLDRED "Error: joint_weights size mismatch" CRESET << endl;
-        exit(-1);
+    if(nh_for_parmas.hasParam("joint_weights")){
+        vector<double> joint_weights_std;
+        nh_for_parmas.getParam("joint_weights", joint_weights_std);
+        if(joint_weights_std.size() != _robot->getNumJoints()){
+            cout << HEADER_PRINT BOLDRED "Error: joint_weights size mismatch" CRESET << endl;
+            exit(-1);
+        }
+        _joint_weights = wrapVector(joint_weights_std.data(), joint_weights_std.size());
+    } else {
+        _joint_weights = Ones;
     }
-    _joint_weights = wrapVector(joint_weights_std.data(), joint_weights_std.size());
 
-    vector<int> mask_cartesian_std;
-    nh_for_parmas.getParam("mask_cartesian", mask_cartesian_std);
-    if(mask_cartesian_std.size() != 6){
-        cout << HEADER_PRINT BOLDRED "Error: mask_cartesian size mismatch" CRESET << endl;
-        exit(-1);
+    if(nh_for_parmas.hasParam("mask_cartesian")){
+        vector<int> mask_cartesian_std;
+        nh_for_parmas.getParam("mask_cartesian", mask_cartesian_std);
+        if(mask_cartesian_std.size() != 6){
+            cout << HEADER_PRINT BOLDRED "Error: mask_cartesian size mismatch" CRESET << endl;
+            exit(-1);
+        }
+        _mask_cartesian = wrapVector(mask_cartesian_std.data(), mask_cartesian_std.size());
+    } else {
+        _mask_cartesian = Ones;
     }
-    _mask_cartesian = wrapVector(mask_cartesian_std.data(), mask_cartesian_std.size());
 
-    vector<double> n_T_e_position_std;
-    nh_for_parmas.getParam("n_T_e_position", n_T_e_position_std);
-    if(n_T_e_position_std.size() != 3){
-        cout << HEADER_PRINT BOLDRED "Error: n_T_e_position size mismatch" CRESET << endl;
-        exit(-1);
+    Vector<3> n_T_e_position;
+    if(nh_for_parmas.hasParam("n_T_e_position")){
+        vector<double> n_T_e_position_std;
+        nh_for_parmas.getParam("n_T_e_position", n_T_e_position_std);
+        if(n_T_e_position_std.size() != 3){
+            cout << HEADER_PRINT BOLDRED "Error: n_T_e_position size mismatch" CRESET << endl;
+            exit(-1);
+        }
+        n_T_e_position = wrapVector(n_T_e_position_std.data(), n_T_e_position_std.size());
+    } else {
+        n_T_e_position = Zeros;
     }
-    Vector<3> n_T_e_position = wrapVector(n_T_e_position_std.data(), n_T_e_position_std.size());
 
-    vector<double> n_T_e_quaternion_std;
-    nh_for_parmas.getParam("n_T_e_quaternion", n_T_e_quaternion_std);
-    if(n_T_e_quaternion_std.size() != 4){
-        cout << HEADER_PRINT BOLDRED "Error: n_T_e_quaternion size mismatch" CRESET << endl;
-        exit(-1);
+    UnitQuaternion n_T_e_quaternion;
+    if(nh_for_parmas.hasParam("n_T_e_quaternion")){
+        vector<double> n_T_e_quaternion_std;
+        nh_for_parmas.getParam("n_T_e_quaternion", n_T_e_quaternion_std);
+        if(n_T_e_quaternion_std.size() != 4){
+            cout << HEADER_PRINT BOLDRED "Error: n_T_e_quaternion size mismatch" CRESET << endl;
+            exit(-1);
+        }
+        n_T_e_quaternion = UnitQuaternion( wrapVector(n_T_e_quaternion_std.data(), n_T_e_quaternion_std.size()) );
+    } else {
+        n_T_e_quaternion = UnitQuaternion();
     }
-    UnitQuaternion n_T_e_quaternion( wrapVector(n_T_e_quaternion_std.data(), n_T_e_quaternion_std.size()) );
 
     Matrix<4,4> n_T_e = transl(n_T_e_position);
     n_T_e.slice<0,0,3,3>() = n_T_e_quaternion.torot();
