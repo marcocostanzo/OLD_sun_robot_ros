@@ -25,6 +25,8 @@ int main(int argc, char *argv[])
     nh_private.param("action_simple_move_joint" , simple_move_joint_action_str, string("simple_move_joint") );
     string move_line_segment_action_str;
     nh_private.param("action_line_segment" , move_line_segment_action_str, string("line_segment") );
+    string move_circumference_action_str;
+    nh_private.param("action_circumference" , move_circumference_action_str, string("circumference") );
     string service_clik_status;    
     nh_private.param("service_get_clik_status" , service_clik_status, string("clik/get_status") );
     string service_set_clik_mode;    
@@ -44,7 +46,8 @@ int main(int argc, char *argv[])
         topic_cartesian_command,
         move_joint_action_str,
         simple_move_joint_action_str,
-        move_line_segment_action_str
+        move_line_segment_action_str,
+        move_circumference_action_str
         );
 
     robot_as.start();

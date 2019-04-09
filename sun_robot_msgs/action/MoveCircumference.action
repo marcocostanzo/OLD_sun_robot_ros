@@ -5,13 +5,15 @@ uint8 MODE_REL_BASE=1
 uint8 MODE_REL_TOOL=2
 uint8 mode
 
-geometry_msgs/Vector3 translation
-float64 translation_duration
-float64 translation_initial_velocity
-float64 translation_final_velocity
-float64 translation_initial_acceleration
-float64 translation_final_acceleration
-float64 translation_start_time
+geometry_msgs/Vector3 normal
+geometry_msgs/Vector3 point_on_normal
+float64 circumference_angle
+float64 circumference_duration
+float64 circumference_initial_velocity
+float64 circumference_final_velocity
+float64 circumference_initial_acceleration
+float64 circumference_final_acceleration
+float64 circumference_start_time
 
 geometry_msgs/Vector3 rotation_axis
 float64 rotation_angle

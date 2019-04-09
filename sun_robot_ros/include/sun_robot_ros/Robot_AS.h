@@ -28,9 +28,11 @@
 #include <sun_robot_msgs/MoveJointsAction.h>
 #include <sun_robot_msgs/SimpleMoveJointsAction.h>
 #include <sun_robot_msgs/MoveLineSegmentAction.h>
+#include <sun_robot_msgs/MoveCircumferenceAction.h>
 #include "Traj_Generators/Vector_Independent_Traj.h"
 #include "Traj_Generators/Cartesian_Independent_Traj.h"
 #include "Traj_Generators/Line_Segment_Traj.h"
+#include "Traj_Generators/Position_Circumference_Traj.h"
 #include "Traj_Generators/Rotation_Const_Axis_Traj.h"
 #include "Traj_Generators/Quintic_Poly_Traj.h"
 #include "sun_robot_msgs/ClikStatus.h"
@@ -123,6 +125,17 @@ actionlib::SimpleActionServer<sun_robot_msgs::MoveLineSegmentAction> _move_line_
 std::string _move_line_segment_action_str;
 sun_robot_msgs::MoveLineSegmentFeedback _move_line_segment_feedback;
 
+/*
+    SimpleActionServer
+*/
+actionlib::SimpleActionServer<sun_robot_msgs::MoveCircumferenceAction> _move_circumference_as; // NodeHandle instance must be created before this line. Otherwise strange error occurs.
+/*
+    Name of the action
+*/
+std::string _move_circumference_action_str;
+sun_robot_msgs::MoveCircumferenceFeedback _move_circumference_feedback;
+
+
 /*************************************
     END Action MoveCartesian
 ***************************************/
@@ -139,7 +152,8 @@ Robot_AS(
     const std::string& topic_cartesian_command,
     const std::string& action_move_joints,
     const std::string& action_simple_move_joints,
-    const std::string& action_move_line_segment//,
+    const std::string& action_move_line_segment,
+    const std::string& action_move_circumference//,
     //const std::string& action_move_line,
     //const std::string& action_move_circular
 );
@@ -306,7 +320,9 @@ geometry_msgs/Twist twist
 
 void moveLineSegmentAbort( const std::string& msg );
 
-void moveLineSegmentPublishFeedback(    const TooN::Vector<3>& pos,
+void moveLineSegmentPublishFeedback(    
+                                        double time_left,
+                                        const TooN::Vector<3>& pos,
                                         const UnitQuaternion& quat,
                                         const TooN::Vector<3>& vel,
                                         const TooN::Vector<3>& w);
@@ -316,6 +332,61 @@ bool moveLineSegmentIsPreemptRequested();
 void moveLineSegmentPreempted();
 
 void moveLineSegmentSuccess();
+
+/*
+#goal definition
+
+uint8 MODE_ABS_BASE=0
+uint8 MODE_REL_BASE=1
+uint8 MODE_REL_TOOL=2
+uint8 mode
+
+geometry_msgs/Vector3 normal
+geometry_msgs/Vector3 point_on_normal
+float64 circumference_duration
+float64 circumference_initial_velocity
+float64 circumference_final_velocity
+float64 circumference_initial_acceleration
+float64 circumference_final_acceleration
+float64 circumference_start_time
+
+geometry_msgs/Vector3 rotation_axis
+float64 rotation_angle
+float64 rotation_duration
+float64 rotation_initial_velocity
+float64 rotation_final_velocity
+float64 rotation_initial_acceleration
+float64 rotation_final_acceleration
+float64 rotation_start_time
+
+float64 start_delay
+float64 steady_state_thr
+---
+#result definition
+bool success
+string msg
+---
+#feedback
+geometry_msgs/Pose pose
+geometry_msgs/Twist twist
+*/
+
+void moveCircumferenceAbort( const std::string& msg );
+
+void moveCircumferencePublishFeedback(  
+                                        double time_left,  
+                                        const TooN::Vector<3>& pos,
+                                        const UnitQuaternion& quat,
+                                        const TooN::Vector<3>& vel,
+                                        const TooN::Vector<3>& w);
+
+bool moveCircumferenceIsPreemptRequested();
+
+void moveCircumferencePreempted();
+
+void moveCircumferenceSuccess();
+
+void executeMoveCircumferenceCB( const sun_robot_msgs::MoveCircumferenceGoalConstPtr &goal );
 
 void executeMoveLineSegmentCB( const sun_robot_msgs::MoveLineSegmentGoalConstPtr &goal );
 
@@ -327,7 +398,7 @@ void executeMoveCartesianGeneralCB(
                                 double start_delay,
                                 double steady_state_thr,
                                 const boost::function< void() >& successFcn,
-                                const boost::function< void(const TooN::Vector<3>&,const UnitQuaternion&,const TooN::Vector<3>&,const TooN::Vector<3>&) >& publishFeedbackFcn,
+                                const boost::function< void(double, const TooN::Vector<3>&,const UnitQuaternion&,const TooN::Vector<3>&,const TooN::Vector<3>&) >& publishFeedbackFcn,
                                 const boost::function< bool() >& isPreemptRequestedFcn,
                                 const boost::function< void() >& preemptedFcn,
                                 const boost::function< void(const std::string&) >& abortFcn 

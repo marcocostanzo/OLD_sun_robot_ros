@@ -14,5 +14,6 @@ bool success
 string msg
 ---
 #feedback
+float64 time_left
 float64[] positions
 float64[] velocities

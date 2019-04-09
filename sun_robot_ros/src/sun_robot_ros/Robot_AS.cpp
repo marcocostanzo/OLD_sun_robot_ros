@@ -64,7 +64,8 @@ Robot_AS::Robot_AS(
     const string& topic_cartesian_command,
     const string& action_move_joints,
     const string& action_simple_move_joints,
-    const string& action_move_line_segment
+    const string& action_move_line_segment,
+    const string& action_move_circumference
 )
 :_num_joints(num_joints),
 _nh(nh),
@@ -75,6 +76,8 @@ _simple_move_joint_action_str(action_simple_move_joints),
 _simple_move_joint_as(_nh, action_simple_move_joints, boost::bind(&Robot_AS::executeSimpleMoveJointCB, this, _1), false),
 _move_line_segment_action_str(action_move_line_segment),
 _move_line_segment_as(_nh, action_move_line_segment, boost::bind(&Robot_AS::executeMoveLineSegmentCB, this, _1), false),
+_move_circumference_action_str(action_move_circumference),
+_move_circumference_as(_nh, action_move_circumference, boost::bind(&Robot_AS::executeMoveCircumferenceCB, this, _1), false),
 _b_action_running(false),
 _b_action_preempted(false),
 _actual_qR(Zeros(_num_joints))
@@ -142,6 +145,7 @@ void Robot_AS::start(){
     _move_joint_as.start();
     _simple_move_joint_as.start();
     _move_line_segment_as.start();
+    _move_circumference_as.start();
     cout << HEADER_PRINT GREEN "STARTED!" CRESET << endl;
 }
 
@@ -639,10 +643,13 @@ void Robot_AS::moveLineSegmentAbort( const string& msg ){
 }
 
 void Robot_AS::moveLineSegmentPublishFeedback(    
+                                        double time_left,
                                         const Vector<3>& pos,
                                         const UnitQuaternion& quat,
                                         const Vector<3>& vel,
                                         const Vector<3>& w){
+
+    _move_line_segment_feedback.time_left = time_left;
 
     _move_line_segment_feedback.pose.position.x = pos[0];
     _move_line_segment_feedback.pose.position.y = pos[1];
@@ -714,6 +721,7 @@ void Robot_AS::executeMoveLineSegmentCB( const sun_robot_msgs::MoveLineSegmentGo
     switch(goal->mode){
         case sun_robot_msgs::MoveLineSegmentGoal::MODE_ABS_BASE:{
             //OK
+            //future: change rotation? w. absolute rotation?
             break;
         }
         case sun_robot_msgs::MoveLineSegmentGoal::MODE_REL_BASE:{
@@ -784,10 +792,222 @@ void Robot_AS::executeMoveLineSegmentCB( const sun_robot_msgs::MoveLineSegmentGo
                                 goal->start_delay,
                                 goal->steady_state_thr,
                                 boost::bind(&Robot_AS::moveLineSegmentSuccess, this),
-                                boost::bind(&Robot_AS::moveLineSegmentPublishFeedback, this, _1, _2,_3,_4),
+                                boost::bind(&Robot_AS::moveLineSegmentPublishFeedback, this, _1, _2,_3,_4, _5),
                                 boost::bind(&Robot_AS::moveLineSegmentIsPreemptRequested, this),
                                 boost::bind(&Robot_AS::moveLineSegmentPreempted, this),
                                 boost::bind(&Robot_AS::moveLineSegmentAbort, this, _1) 
+                                );
+
+}
+
+/*
+#goal definition
+
+uint8 MODE_ABS_BASE=0
+uint8 MODE_REL_BASE=1
+uint8 MODE_REL_TOOL=2
+uint8 mode
+
+geometry_msgs/Vector3 normal
+geometry_msgs/Vector3 point_on_normal
+float64 circumference_duration
+float64 circumference_initial_velocity
+float64 circumference_final_velocity
+float64 circumference_initial_acceleration
+float64 circumference_final_acceleration
+float64 circumference_start_time
+
+geometry_msgs/Vector3 rotation_axis
+float64 rotation_angle
+float64 rotation_duration
+float64 rotation_initial_velocity
+float64 rotation_final_velocity
+float64 rotation_initial_acceleration
+float64 rotation_final_acceleration
+float64 rotation_start_time
+
+float64 start_delay
+float64 steady_state_thr
+---
+#result definition
+bool success
+string msg
+---
+#feedback
+geometry_msgs/Pose pose
+geometry_msgs/Twist twist
+*/
+
+void Robot_AS::moveCircumferenceAbort( const string& msg ){
+    sun_robot_msgs::MoveCircumferenceResult move_circumference_result;
+    move_circumference_result.success = false;
+    move_circumference_result.msg = msg;
+    _move_circumference_as.setAborted(move_circumference_result);
+}
+
+void Robot_AS::moveCircumferencePublishFeedback(
+                                        double time_left,    
+                                        const Vector<3>& pos,
+                                        const UnitQuaternion& quat,
+                                        const Vector<3>& vel,
+                                        const Vector<3>& w){
+
+    _move_circumference_feedback.time_left = time_left;
+
+    _move_circumference_feedback.pose.position.x = pos[0];
+    _move_circumference_feedback.pose.position.y = pos[1];
+    _move_circumference_feedback.pose.position.z = pos[2];
+
+    _move_circumference_feedback.pose.orientation.w = quat.getS(); 
+    Vector<3> quat_v = quat.getV();
+    _move_circumference_feedback.pose.orientation.x = quat_v[0];
+    _move_circumference_feedback.pose.orientation.y = quat_v[1];
+    _move_circumference_feedback.pose.orientation.z = quat_v[2];
+                
+    _move_circumference_feedback.twist.linear.x = vel[0];
+    _move_circumference_feedback.twist.linear.y = vel[1];
+    _move_circumference_feedback.twist.linear.z = vel[2];
+
+    _move_circumference_feedback.twist.angular.x = w[0];
+    _move_circumference_feedback.twist.angular.y = w[1];
+    _move_circumference_feedback.twist.angular.z = w[2];
+
+    _move_circumference_as.publishFeedback(_move_circumference_feedback);
+}
+
+bool Robot_AS::moveCircumferenceIsPreemptRequested(){
+    return _move_circumference_as.isPreemptRequested();
+}
+
+void Robot_AS::moveCircumferencePreempted(){
+    sun_robot_msgs::MoveCircumferenceResult move_circumference_result;
+    move_circumference_result.success = true;
+    move_circumference_result.msg = "Preempted";
+    _move_circumference_as.setPreempted(move_circumference_result);
+}
+
+void Robot_AS::moveCircumferenceSuccess(){
+    sun_robot_msgs::MoveCircumferenceResult move_circumference_result;
+    move_circumference_result.success = true;
+    move_circumference_result.msg = "Compleate";
+    _move_circumference_as.setSucceeded(move_circumference_result);
+}
+
+void Robot_AS::executeMoveCircumferenceCB( const sun_robot_msgs::MoveCircumferenceGoalConstPtr &goal ){
+
+    if(_b_action_running){
+        moveCircumferenceAbort("Another action is running");
+        return;
+    }
+
+    _b_action_running = true;
+
+    //GET INITIAL POSITION!
+    if( !updateActualStatus(true) ){
+        cout << HEADER_PRINT BOLDRED "Failed to update Status" CRESET << endl;
+        moveCircumferenceAbort("Failed to update Status");
+        releaseResource();
+        return;
+    }
+
+    //Set Traj Mode
+    Vector<3> normal = makeVector(
+                    goal->normal.x,
+                    goal->normal.y,
+                    goal->normal.z
+                    );
+    Vector<3> point_on_normal = makeVector(
+                                goal->point_on_normal.x,
+                                goal->point_on_normal.y,
+                                goal->point_on_normal.z
+                                );
+    Vector<3> rotation_axis = makeVector(
+                                goal->rotation_axis.x,
+                                goal->rotation_axis.y,
+                                goal->rotation_axis.z
+                                );
+    switch(goal->mode){
+        case sun_robot_msgs::MoveCircumferenceGoal::MODE_ABS_BASE:{
+            //OK
+            //future: change rotation? w. absolute rotation?
+            break;
+        }
+        case sun_robot_msgs::MoveCircumferenceGoal::MODE_REL_BASE:{
+            point_on_normal = _actual_position + point_on_normal;          
+            break;
+        }
+        case sun_robot_msgs::MoveCircumferenceGoal::MODE_REL_TOOL:{
+            Matrix<4,4> b_T_e = Identity;
+            b_T_e.slice<0,0,3,3>() = _actual_quaternion.torot();
+            b_T_e.T()[3].slice<0,3>() = _actual_position;
+
+            Vector<4> point_on_normal_tilde = Ones;
+            point_on_normal_tilde.slice<0,3>() = point_on_normal;
+            point_on_normal_tilde = b_T_e*point_on_normal_tilde;
+            point_on_normal = point_on_normal_tilde.slice<0,3>();
+
+            normal = b_T_e.slice<0,0,3,3>() * normal;
+            rotation_axis = b_T_e.slice<0,0,3,3>() * rotation_axis;
+
+            break;
+        }
+        default:{
+            cout << HEADER_PRINT BOLDRED "MoveCircumference Invalid Mode" CRESET << endl;
+            moveCircumferenceAbort("Invalid Mode");
+            releaseResource();
+            return;
+        }
+    }
+
+    cout << HEADER_PRINT "normal: " << normal << endl;
+    cout << HEADER_PRINT "Point on normal: " << point_on_normal << endl;
+    cout << HEADER_PRINT "Angle: " << goal->circumference_angle << endl;  
+
+    //Build Traj
+    Cartesian_Independent_Traj cart_traj( 
+            //LineTraj
+            Position_Circumference_Traj(    
+                normal, 
+                point_on_normal,
+                _actual_position, 
+                Quintic_Poly_Traj(   
+                    goal->circumference_duration,//duration
+                    0.0,//double initial_position,
+                    goal->circumference_angle,//double final_position,
+                    goal->circumference_start_time,                            
+                    goal->circumference_initial_velocity, 
+                    goal->circumference_final_velocity,
+                    goal->circumference_initial_acceleration, 
+                    goal->circumference_final_acceleration
+                    )
+            )   
+            , 
+            //Rotation Traj
+            Rotation_Const_Axis_Traj( 
+                _actual_quaternion,// initial_quat, 
+                rotation_axis,//axis,
+                Quintic_Poly_Traj(   
+                    goal->rotation_duration,//duration
+                    0.0,//double initial_position,
+                    goal->rotation_angle,//double final_position,
+                    goal->rotation_start_time,                            
+                    goal->rotation_initial_velocity, 
+                    goal->rotation_final_velocity,
+                    goal->rotation_initial_acceleration, 
+                    goal->rotation_final_acceleration
+                    )
+            )
+    );
+
+    executeMoveCartesianGeneralCB( 
+                                cart_traj,
+                                goal->start_delay,
+                                goal->steady_state_thr,
+                                boost::bind(&Robot_AS::moveCircumferenceSuccess, this),
+                                boost::bind(&Robot_AS::moveCircumferencePublishFeedback, this, _1, _2,_3,_4, _5),
+                                boost::bind(&Robot_AS::moveCircumferenceIsPreemptRequested, this),
+                                boost::bind(&Robot_AS::moveCircumferencePreempted, this),
+                                boost::bind(&Robot_AS::moveCircumferenceAbort, this, _1) 
                                 );
 
 }
@@ -800,7 +1020,7 @@ void Robot_AS::executeMoveCartesianGeneralCB(
                                 double start_delay,
                                 double steady_state_thr,
                                 const boost::function< void() >& successFcn,
-                                const boost::function< void(const Vector<3>&,const UnitQuaternion&,const Vector<3>&,const Vector<3>&) >& publishFeedbackFcn,
+                                const boost::function< void(double, const Vector<3>&,const UnitQuaternion&,const Vector<3>&,const Vector<3>&) >& publishFeedbackFcn,
                                 const boost::function< bool() >& isPreemptRequestedFcn,
                                 const boost::function< void() >& preemptedFcn,
                                 const boost::function< void(const string&) >& abortFcn 
@@ -839,7 +1059,7 @@ void Robot_AS::executeMoveCartesianGeneralCB(
         
         publishCartesian(pos,quaternion,vel,w);
 
-        publishFeedbackFcn(pos,quaternion,vel,w);
+        publishFeedbackFcn(traj.getTimeLeft(time_now),pos,quaternion,vel,w);
 
         loop_rate.sleep();
 
@@ -877,7 +1097,7 @@ void Robot_AS::executeMoveCartesianGeneralCB(
 
             publishCartesian(pos_final,quaternion_final,vel_final,w_final);
 
-            publishFeedbackFcn(pos_final,quaternion_final,vel_final,w_final);
+            publishFeedbackFcn(traj.getTimeLeft(time_now),pos_final,quaternion_final,vel_final,w_final);
 
             loop_rate.sleep();
 
