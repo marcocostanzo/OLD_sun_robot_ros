@@ -356,6 +356,7 @@ bool CLIK_Node::setParams(sun_robot_msgs::ClikSetParams::Request  &req,
 /* RUNNERS */
 void CLIK_Node::refresh(){
     //Wait for initial configuration
+    cout << HEADER_PRINT YELLOW "refresh()" << CRESET << endl;
     cout << HEADER_PRINT YELLOW "Wait for joint positions..." << CRESET << endl;
     _qDH_k = _robot->joints_Robot2DH( _getJointPosition_fcn() );
     cout << HEADER_PRINT "Joint positions: " << _qDH_k << endl;
@@ -410,6 +411,10 @@ void CLIK_Node::run(){
 
     }
 
+}
+
+const RobotPtr& CLIK_Node::getRobot() const{
+    return _robot;
 }
 
 void CLIK_Node::clik_loop(){

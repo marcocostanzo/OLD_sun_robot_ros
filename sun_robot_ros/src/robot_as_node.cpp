@@ -1,3 +1,26 @@
+/*
+
+    Robot Action Server Node
+
+    Copyright 2019 Università della Campania Luigi Vanvitelli
+
+    Author: Marco Costanzo <marco.costanzo@unicampania.it>
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+*/
+
 #include "sun_robot_ros/Robot_AS.h"
 
 using namespace std;
@@ -31,6 +54,8 @@ int main(int argc, char *argv[])
     nh_private.param("service_get_clik_status" , service_clik_status, string("clik/get_status") );
     string service_set_clik_mode;    
     nh_private.param("service_set_clik_mode" , service_set_clik_mode, string("clik/set_mode") );
+    string service_force_control_status;    
+    nh_private.param("service_ger_force_control_status" , service_force_control_status, string("force_control/get_status") );
     string topic_joints_command;    
     nh_private.param("topic_joints_command" , topic_joints_command, string("clik/desired_q") );
     string topic_cartesian_command;  
@@ -42,6 +67,7 @@ int main(int argc, char *argv[])
         hz,
         service_clik_status,
         service_set_clik_mode,
+        service_force_control_status,
         topic_joints_command,
         topic_cartesian_command,
         move_joint_action_str,

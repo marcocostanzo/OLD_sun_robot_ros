@@ -60,6 +60,7 @@ Robot_AS::Robot_AS(
     double hz,
     const string& service_clik_status,
     const string& service_set_clik_mode,
+    const string& service_force_control_status,
     const string& topic_joints_command,
     const string& topic_cartesian_command,
     const string& action_move_joints,
@@ -84,6 +85,9 @@ _actual_qR(Zeros(_num_joints))
 {
     _serviceGetClikStatus = _nh.serviceClient<sun_robot_msgs::ClikStatus>(service_clik_status);
     _serviceSetClikMode = _nh.serviceClient<sun_robot_msgs::ClikSetMode>(service_set_clik_mode);
+    if(service_force_control_status!=""){
+        _serviceGetForceControllerStatus = _nh.serviceClient<sun_robot_msgs::ForceControllerStatus>(service_force_control_status);
+    }
     _pub_joints = _nh.advertise<sun_robot_msgs::JointPositionVelocityStamped>(topic_joints_command, 1);
     _pub_cartesian = _nh.advertise<sun_robot_msgs::PoseTwistStamped>(topic_cartesian_command, 1);
     
@@ -155,7 +159,7 @@ void Robot_AS::start(){
 
 bool Robot_AS::updateActualStatus( bool b_refresh ){
 
-    if(_b_force_controller_active){
+    if(isForceControllerActive()){
         //Non so se serve... ma per evitare discontinuità lo farei...
         b_refresh = false;
     }
@@ -200,8 +204,9 @@ bool Robot_AS::updateActualStatus( bool b_refresh ){
     _actual_clik_error[4] = status_msg.response.clik_error[4];
     _actual_clik_error[5] = status_msg.response.clik_error[5];
 
-    if(_b_force_controller_active){
-        //Prendi il delta attuale del controllore e correggi l'actual_position
+    if(isForceControllerActive()){
+        _actual_position = _actual_position - _Delta_pos_foce_controller;
+        _actual_quaternion = _actual_quaternion / _Delta_quat_force_controller;
     }
 
     return true;
@@ -210,14 +215,16 @@ bool Robot_AS::updateActualStatus( bool b_refresh ){
 
 bool Robot_AS::clikSetMode( uint8_t clik_mode ){
 
-    if(_b_force_controller_active){//nb potrebbe venire da servizio invece di essere una variabile
-        //Controlli sulla modalità...
+    if(isForceControllerActive() && clik_mode!=sun_robot_msgs::ClikSetMode::Request::MODE_CLIK){
+        _clik_set_mode_error_str = "Cannot unset MODE_CLIK while force control is active";
+        return false;
     }
+
+    _clik_set_mode_error_str = "Failed to set Clik Mode";
 
     sun_robot_msgs::ClikSetMode setmode_msg;
 
     setmode_msg.request.mode = clik_mode;
-
     bool b_result = _serviceSetClikMode.call(setmode_msg);
     b_result = b_result && setmode_msg.response.success;
 
@@ -225,12 +232,55 @@ bool Robot_AS::clikSetMode( uint8_t clik_mode ){
 
 }
 
-void Robot_AS::releaseResource(){
+bool Robot_AS::isForceControllerActive(){
 
-    if( !clikSetMode(sun_robot_msgs::ClikSetMode::Request::MODE_STOP) ){
-        cout << HEADER_PRINT BOLDRED "Failed to STOP Clik" CRESET << endl;
+    if(!_serviceGetForceControllerStatus.exists()){
+        _Delta_pos_foce_controller = Zeros;
+        _Delta_quat_force_controller = UnitQuaternion();
+        return false;
     }
 
+    sun_robot_msgs::ForceControllerStatus status_msg;
+
+    bool b_result = _serviceGetForceControllerStatus.call(status_msg);
+    b_result = b_result && status_msg.response.success;
+
+    if(!b_result){
+        cout << HEADER_PRINT BOLDRED "ERROR: Cannot check force controller... exit!" CRESET << endl;
+        exit(-1);
+    }
+
+    bool b_out = (status_msg.response.mode == sun_robot_msgs::ForceControllerStatus::Response::MODE_FORCE_CONTROL);
+
+    if(b_out){
+        _Delta_pos_foce_controller[0] = status_msg.response.pose_correction.position.x;
+        _Delta_pos_foce_controller[1] = status_msg.response.pose_correction.position.y;
+        _Delta_pos_foce_controller[2] = status_msg.response.pose_correction.position.z;
+        _Delta_quat_force_controller = UnitQuaternion(
+            status_msg.response.pose_correction.orientation.w,
+            makeVector(
+                status_msg.response.pose_correction.orientation.x,
+                status_msg.response.pose_correction.orientation.y,
+                status_msg.response.pose_correction.orientation.z
+            )
+        );
+    } else{
+        _Delta_pos_foce_controller = Zeros;
+        _Delta_quat_force_controller = UnitQuaternion();
+    }
+
+    return b_out;
+
+}
+
+void Robot_AS::releaseResource(){
+
+    if(!isForceControllerActive()){
+        if( !clikSetMode(sun_robot_msgs::ClikSetMode::Request::MODE_STOP) ){
+        cout << HEADER_PRINT BOLDRED "Failed to STOP Clik in releaseResource()" CRESET << endl;
+        }
+    }
+    
     _b_action_preempted = false;
     _b_action_running = false;
 
@@ -486,8 +536,8 @@ void Robot_AS::executeMoveJointGeneralCB(
 
     //SET CLIK MODE JOINTS
     if( !clikSetMode(sun_robot_msgs::ClikSetMode::Request::MODE_JOINT) ){
-        cout << HEADER_PRINT BOLDRED "Failed to set Clik Mode!" CRESET << endl;
-        abortFcn("Failed to set Clik Mode");
+        cout << HEADER_PRINT BOLDRED << _clik_set_mode_error_str << CRESET << endl;
+        abortFcn(_clik_set_mode_error_str);
         releaseResource();
         return;
     }
@@ -1028,8 +1078,8 @@ void Robot_AS::executeMoveCartesianGeneralCB(
 
     //SET CLIK MODE JOINTS
     if( !clikSetMode(sun_robot_msgs::ClikSetMode::Request::MODE_CLIK) ){
-        cout << HEADER_PRINT BOLDRED "Failed to set Clik Mode!" CRESET << endl;
-        abortFcn("Failed to set Clik Mode");
+        cout << HEADER_PRINT BOLDRED << _clik_set_mode_error_str << CRESET << endl;
+        abortFcn(_clik_set_mode_error_str);
         releaseResource();
         return;
     }

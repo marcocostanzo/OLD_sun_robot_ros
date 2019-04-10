@@ -1,0 +1,46 @@
+<launch>
+
+<arg name="num_joints" />
+
+<arg name="controlled_index" />
+
+<arg name="force_controller_hz" />
+
+<arg name="force_controller_num_coeff" />
+
+<arg name="force_controller_den_coeff" />
+
+<arg name="topic_measured_wrench" />
+
+<node name="robot_as"  pkg="sun_robot_ros" type="robot_as" output="screen">
+
+    <param name="num_joints" type="int" value="$(arg num_joints)"/>
+
+    <!--
+    <param name="hz" value="1000.0"/>
+    -->
+
+    <param name="topic_cartesian_command" value="force_control/desired_pose_twist_in"/>
+
+
+</node>
+
+<node name="force_controller"  pkg="sun_robot_ros" type="force_controller" output="screen">
+
+    <param name="topic_measured_wrench" value="$(arg topic_measured_wrench)"/>
+
+    <!--
+    <param name="topic_desired_wrench" value="$(arg topic_desired_wrench)"/>
+    -->
+
+    <param name="controlled_index" value="$(arg controlled_index)"/>
+
+    <param name="hz" value="$(arg force_controller_hz)"/>
+
+    <rosparam param="b_vect" subst_value="true">$(arg force_controller_num_coeff)</rosparam>
+
+    <rosparam param="a_vect" subst_value="true">$(arg force_controller_den_coeff)</rosparam>
+
+</node>
+
+</launch>

@@ -37,6 +37,7 @@
 #include "Traj_Generators/Quintic_Poly_Traj.h"
 #include "sun_robot_msgs/ClikStatus.h"
 #include "sun_robot_msgs/ClikSetMode.h"
+#include "sun_robot_msgs/ForceControllerStatus.h"
 #include "sun_robot_msgs/JointPositionVelocityStamped.h"
 #include "sun_robot_msgs/PoseTwistStamped.h"
 
@@ -80,10 +81,12 @@ ros::ServiceClient _serviceGetClikStatus;
 ros::ServiceClient _serviceSetClikMode;
 ros::Publisher _pub_joints;
 ros::Publisher _pub_cartesian;
+std::string _clik_set_mode_error_str;
 
 //Force Controller
-bool _b_force_controller_active = false;
-TooN::Vector<3> _delta_pos_force_controller = TooN::Zeros;
+TooN::Vector<3> _Delta_pos_foce_controller = TooN::Zeros;
+UnitQuaternion _Delta_quat_force_controller;
+ros::ServiceClient _serviceGetForceControllerStatus;
 
 /*************************************
     Action MoveJoint
@@ -148,6 +151,7 @@ Robot_AS(
     double hz,
     const std::string& service_clik_status,
     const std::string& service_set_clik_mode,
+    const std::string& service_force_control_status,
     const std::string& topic_joints_command,
     const std::string& topic_cartesian_command,
     const std::string& action_move_joints,
@@ -184,6 +188,8 @@ TooN::Vector<6> _actual_clik_error;
 bool updateActualStatus( bool b_refresh = false );
 
 bool clikSetMode( uint8_t clik_mode );
+
+bool isForceControllerActive();
 
 void releaseResource();
 

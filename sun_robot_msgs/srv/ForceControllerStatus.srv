@@ -1,0 +1,8 @@
+
+---
+uint8 MODE_STOP=0
+uint8 MODE_FORCE_CONTROL=1
+int8 mode
+geometry_msgs/Wrench desired_wrench
+geometry_msgs/Pose pose_correction
+bool success

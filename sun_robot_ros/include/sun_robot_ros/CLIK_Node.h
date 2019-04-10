@@ -134,6 +134,8 @@ void refresh();
 
 void run();
 
+const RobotPtr& getRobot() const;
+
 protected:
 void clik_loop();
 

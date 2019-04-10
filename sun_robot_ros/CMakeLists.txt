@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
     sun_robot_msgs
     std_srvs
     actionlib
+    sun_systems_lib
 )
 
 ## System dependencies are found with CMake's conventions
@@ -207,6 +208,16 @@ add_executable(robot_as
 )
 add_dependencies(robot_as ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(robot_as
+  ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)
+#########################################
+#########################################
+add_executable(force_controller
+  src/force_controller_node.cpp
+)
+add_dependencies(force_controller ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(force_controller
   ${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )
