@@ -12,6 +12,10 @@
 
 <arg name="topic_measured_wrench" />
 
+<arg name="ee_pose_topic" />
+
+<arg name="change_wrench_frame" default="true" />
+
 <node name="robot_as"  pkg="sun_robot_ros" type="robot_as" output="screen">
 
     <param name="num_joints" type="int" value="$(arg num_joints)"/>
@@ -25,9 +29,22 @@
 
 </node>
 
+<node name="wrench_ch_frame"  pkg="sun_robot_ros" type="wrench_ch_frame" output="screen" if="$(arg change_wrench_frame)">
+
+    <param name="use_rotation_only" type="bool" value="true"/>
+
+    <param name="topic_wrench_in" value="$(arg topic_measured_wrench)"/>
+
+    <param name="topic_wrench_out" value="force_controller/wrench_in"/>
+
+    <param name="topic_pose" value="$(arg ee_pose_topic)"/>
+
+</node>
+
 <node name="force_controller"  pkg="sun_robot_ros" type="force_controller" output="screen">
 
-    <param name="topic_measured_wrench" value="$(arg topic_measured_wrench)"/>
+    <param name="topic_measured_wrench" value="force_controller/wrench_in" if="$(arg change_wrench_frame)"/>
+    <param name="topic_measured_wrench" value="$(arg topic_measured_wrench)" unless="$(arg change_wrench_frame)"/>
 
     <!--
     <param name="topic_desired_wrench" value="$(arg topic_desired_wrench)"/>

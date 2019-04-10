@@ -222,3 +222,13 @@ target_link_libraries(force_controller
   ${catkin_LIBRARIES}
 )
 #########################################
+#########################################
+add_executable(wrench_ch_frame
+  src/wrench_ch_frame_node.cpp
+)
+add_dependencies(wrench_ch_frame ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(wrench_ch_frame
+  ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)
+#########################################
