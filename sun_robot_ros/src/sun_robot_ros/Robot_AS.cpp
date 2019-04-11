@@ -768,10 +768,13 @@ void Robot_AS::executeMoveLineSegmentCB( const sun_robot_msgs::MoveLineSegmentGo
                                 goal->rotation_axis.y,
                                 goal->rotation_axis.z
                                 );
+    double rotation_angle = goal->rotation_angle;
     switch(goal->mode){
         case sun_robot_msgs::MoveLineSegmentGoal::MODE_ABS_BASE:{
             //OK
             //future: change rotation? w. absolute rotation?
+            AngVec out_ang_vec = (UnitQuaternion( AngVec(rotation_axis,rotation_angle) )/_actual_quaternion).toangvec();
+            cout << HEADER_PRINT MAGENTA "vec = " << out_ang_vec.getVec() << " ang = " << out_ang_vec.getAng() << CRESET << endl;
             break;
         }
         case sun_robot_msgs::MoveLineSegmentGoal::MODE_REL_BASE:{
@@ -827,7 +830,7 @@ void Robot_AS::executeMoveLineSegmentCB( const sun_robot_msgs::MoveLineSegmentGo
                 Quintic_Poly_Traj(   
                     goal->rotation_duration,//duration
                     0.0,//double initial_position,
-                    goal->rotation_angle,//double final_position,
+                    rotation_angle,//double final_position,
                     goal->rotation_start_time,                            
                     goal->rotation_initial_velocity, 
                     goal->rotation_final_velocity,
@@ -976,10 +979,14 @@ void Robot_AS::executeMoveCircumferenceCB( const sun_robot_msgs::MoveCircumferen
                                 goal->rotation_axis.y,
                                 goal->rotation_axis.z
                                 );
+
+    double rotation_angle = goal->rotation_angle;
     switch(goal->mode){
         case sun_robot_msgs::MoveCircumferenceGoal::MODE_ABS_BASE:{
             //OK
             //future: change rotation? w. absolute rotation?
+            AngVec out_ang_vec = (UnitQuaternion( AngVec(rotation_axis,rotation_angle) )/_actual_quaternion).toangvec();
+            cout << HEADER_PRINT MAGENTA "vec = " << out_ang_vec.getVec() << " ang = " << out_ang_vec.getAng() << CRESET << endl;
             break;
         }
         case sun_robot_msgs::MoveCircumferenceGoal::MODE_REL_BASE:{
