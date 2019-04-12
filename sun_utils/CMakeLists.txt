@@ -227,3 +227,12 @@ target_link_libraries(wrench_ch_frame
   ${catkin_LIBRARIES}
 )
 #########################################
+#########################################
+add_executable(sine_wave_generator
+  src/sine_wave_generator_node.cpp
+)
+add_dependencies(sine_wave_generator ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(sine_wave_generator
+  ${catkin_LIBRARIES}
+)
+#########################################
