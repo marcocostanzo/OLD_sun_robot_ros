@@ -297,23 +297,25 @@ int main(int argc, char *argv[])
         exit(-1);
     }
 
-    vector<double> b_vect_std;
-    if(nh_private.hasParam("b_vect")){
-        nh_private.getParam("b_vect", b_vect_std);
+    vector<double> num_coeff_std;
+    if(nh_private.hasParam("num_coeff")){
+        nh_private.getParam("num_coeff", num_coeff_std);
     } else {
-        cout << HEADER_PRINT BOLDRED "param b_vect not provided!" CRESET << endl;
+        cout << HEADER_PRINT BOLDRED "param num_coeff not provided!" CRESET << endl;
         exit(-1);
     }
-    Vector<> b_vect = wrapVector(b_vect_std.data(), b_vect_std.size());
+    Vector<> num_coeff = wrapVector(num_coeff_std.data(), num_coeff_std.size());
 
-    vector<double> a_vect_std;
-    if(nh_private.hasParam("a_vect")){
-        nh_private.getParam("a_vect", a_vect_std);
+    vector<double> den_coeff_std;
+    if(nh_private.hasParam("den_coeff")){
+        nh_private.getParam("den_coeff", den_coeff_std);
     } else {
-        cout << HEADER_PRINT BOLDRED "param a_vect not provided!" CRESET << endl;
+        cout << HEADER_PRINT BOLDRED "param den_coeff not provided!" CRESET << endl;
         exit(-1);
     }
-    Vector<> a_vect = wrapVector(a_vect_std.data(), a_vect_std.size());
+    Vector<> den_coeff = wrapVector(den_coeff_std.data(), den_coeff_std.size());
+    Vector<> a_vect = den_coeff.slice(1,den_coeff.size()-1)/den_coeff[0]; 
+    num_coeff = num_coeff/den_coeff[0]; 
 
 
     //Subs
@@ -342,7 +344,7 @@ int main(int argc, char *argv[])
             if(i == controlled_index){
                 siso_diag_vect.push_back(
                                 TF_SISO_Ptr(
-                                    new TF_SISO(b_vect, a_vect, 1.0/hz)
+                                    new TF_SISO(num_coeff, a_vect, 1.0/hz)
                                 )
                 );
             } else{
@@ -378,8 +380,7 @@ int main(int argc, char *argv[])
             case sun_robot_msgs::ForceControllerSetMode::Request::MODE_FORCE_CONTROL:{
                 
                 Delta_pos = controller_gain*controller_tf.apply( wrench_d.slice<0,3>() - wrench_m.slice<0,3>() );;
-cout << HEADER_PRINT << "error = " << (wrench_d.slice<0,3>() - wrench_m.slice<0,3>() ) << endl;
-cout << HEADER_PRINT << "DP = " << Delta_pos << endl;
+
                 break;
             }
             default:{

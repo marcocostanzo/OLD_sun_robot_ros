@@ -56,9 +56,9 @@
 
     <param name="hz" value="$(arg force_controller_hz)"/>
 
-    <rosparam param="b_vect" subst_value="true">$(arg force_controller_num_coeff)</rosparam>
+    <rosparam param="num_coeff" subst_value="true">$(arg force_controller_num_coeff)</rosparam>
 
-    <rosparam param="a_vect" subst_value="true">$(arg force_controller_den_coeff)</rosparam>
+    <rosparam param="den_coeff" subst_value="true">$(arg force_controller_den_coeff)</rosparam>
 
     <param name="controller_gain" value="$(arg force_controller_gain)"/>
 
