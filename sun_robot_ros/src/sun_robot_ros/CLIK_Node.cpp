@@ -197,7 +197,6 @@ CLIK_Node::CLIK_Node(
     n_T_e.slice<0,0,3,3>() = n_T_e_quaternion.torot();
 
     _robot->setnTe(n_T_e);
-
 }
 
 void CLIK_Node::desiredPoseTwist_cbk( const sun_robot_msgs::PoseTwistStamped::ConstPtr& pose_twist_msg ){

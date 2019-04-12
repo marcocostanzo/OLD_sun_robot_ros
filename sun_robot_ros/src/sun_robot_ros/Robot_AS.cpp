@@ -805,6 +805,9 @@ void Robot_AS::executeMoveLineSegmentCB( const sun_robot_msgs::MoveLineSegmentGo
 
     //Build Traj
     double scalar_traj_scale = norm(pf-_actual_position);
+    if( scalar_traj_scale < 10.0*std::numeric_limits<double>::epsilon()  ){
+        scalar_traj_scale = 1.0;
+    }
     Cartesian_Independent_Traj cart_traj( 
             //LineTraj
             Line_Segment_Traj( 

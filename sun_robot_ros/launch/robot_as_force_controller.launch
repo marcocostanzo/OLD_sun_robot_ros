@@ -10,6 +10,8 @@
 
 <arg name="force_controller_den_coeff" />
 
+<arg name="force_controller_gain" default="1.0" />
+
 <arg name="topic_measured_wrench" />
 
 <arg name="ee_pose_topic" />
@@ -57,6 +59,8 @@
     <rosparam param="b_vect" subst_value="true">$(arg force_controller_num_coeff)</rosparam>
 
     <rosparam param="a_vect" subst_value="true">$(arg force_controller_den_coeff)</rosparam>
+
+    <param name="controller_gain" value="$(arg force_controller_gain)"/>
 
 </node>
 

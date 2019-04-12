@@ -26,6 +26,7 @@
 #include "sun_robot_msgs/PoseTwistStamped.h"
 #include "sun_robot_msgs/ForceControllerSetMode.h"
 #include "sun_robot_msgs/ForceControllerStatus.h"
+#include "sun_robot_msgs/ClikStatus.h"
 #include "UnitQuaternion.h"
 #include "TF_MIMO/TF_MIMO_DIAGONAL.h"
 
@@ -75,10 +76,42 @@ uint8_t mode = sun_robot_msgs::ForceControllerSetMode::Request::MODE_STOP;
 
 //ROS VARS
 ros::Publisher pubPoseTwist_out;
+ros::ServiceClient serviceGetClikStatus;
+
+void updatePose_in(bool b_refresh_clik = false){
+    sun_robot_msgs::ClikStatus status_msg;
+
+    status_msg.request.refresh = b_refresh_clik;
+
+    bool b_result = serviceGetClikStatus.call(status_msg);
+    b_result = b_result && status_msg.response.success;
+
+    if(!b_result){
+        cout << HEADER_PRINT BOLDRED "Failed to update initial pose" CRESET << endl;
+        exit(-1);
+    }
+
+    pos_in[0] = status_msg.response.pose.position.x;
+    pos_in[1] = status_msg.response.pose.position.y;
+    pos_in[2] = status_msg.response.pose.position.z;
+
+    quat_in = UnitQuaternion(
+        status_msg.response.pose.orientation.w, 
+        makeVector(
+            status_msg.response.pose.orientation.x,
+            status_msg.response.pose.orientation.y,
+            status_msg.response.pose.orientation.z
+        )
+    );
+
+    cout << HEADER_PRINT "Initial Position updated: P = " << pos_in << " Q = " << quat_in << endl; 
+
+}
 
 void resetController(){
     cout << HEADER_PRINT "Reset..." << endl;
     controller_tf.reset();
+    updatePose_in();
 }
 
 void readMeasuredWrench(const geometry_msgs::WrenchStamped::ConstPtr& wrench_msg){
@@ -246,10 +279,15 @@ int main(int argc, char *argv[])
     nh_private.param("service_get_status" , service_get_status_str, string("force_control/get_status") );
     string service_set_mode_str;
     nh_private.param("service_set_mode" , service_set_mode_str, string("force_control/set_mode") );
+    string service_clik_status_str;
+    nh_private.param("service_get_clik_status" , service_clik_status_str, string("clik/get_status") );
 
     //control params
     int controlled_index;
     nh_private.param("controlled_index" , controlled_index, 3 );
+
+    double controller_gain;
+    nh_private.param("controller_gain" , controller_gain, 1.0 );
 
     double hz;
     if(nh_private.hasParam("hz")){
@@ -270,7 +308,7 @@ int main(int argc, char *argv[])
 
     vector<double> a_vect_std;
     if(nh_private.hasParam("a_vect")){
-        nh_private.getParam("b_vect", a_vect_std);
+        nh_private.getParam("a_vect", a_vect_std);
     } else {
         cout << HEADER_PRINT BOLDRED "param a_vect not provided!" CRESET << endl;
         exit(-1);
@@ -287,9 +325,14 @@ int main(int argc, char *argv[])
     ros::ServiceServer serviceGetStatus = nh_public.advertiseService( service_get_status_str, serviceGetStatus_cb);
     ros::ServiceServer serviceSetMode = nh_public.advertiseService( service_set_mode_str, serviceSetMode_cb);
     
+    //Service clients
+    serviceGetClikStatus = nh_public.serviceClient<sun_robot_msgs::ClikStatus>(service_clik_status_str);
+
     //Pubs
     pubPoseTwist_out = nh_public.advertise<sun_robot_msgs::PoseTwistStamped>(topic_pose_twist_out_str, 1);
     
+    //wait for servers
+    serviceGetClikStatus.waitForExistence();
 
     //Build controller
     cout << HEADER_PRINT "Building the controller [controlled_index=" << controlled_index <<"]..." << endl; 
@@ -314,7 +357,9 @@ int main(int argc, char *argv[])
 
         controller_tf.setSISODiagVect(siso_diag_vect);
     }
-    
+    cout << HEADER_PRINT " The controller: " << endl;
+    controller_tf.display();
+    resetController();
     cout << HEADER_PRINT GREEN "Start!" CRESET << endl;
 
     ros::Rate loop_rate(hz);
@@ -332,8 +377,9 @@ int main(int argc, char *argv[])
             }
             case sun_robot_msgs::ForceControllerSetMode::Request::MODE_FORCE_CONTROL:{
                 
-                Delta_pos = controller_tf.apply( wrench_d.slice<0,3>() - wrench_m.slice<0,3>() );;
-
+                Delta_pos = controller_gain*controller_tf.apply( wrench_d.slice<0,3>() - wrench_m.slice<0,3>() );;
+cout << HEADER_PRINT << "error = " << (wrench_d.slice<0,3>() - wrench_m.slice<0,3>() ) << endl;
+cout << HEADER_PRINT << "DP = " << Delta_pos << endl;
                 break;
             }
             default:{
