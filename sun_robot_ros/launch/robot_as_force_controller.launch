@@ -31,7 +31,7 @@
 
 </node>
 
-<node name="wrench_ch_frame"  pkg="sun_robot_ros" type="wrench_ch_frame" output="screen" if="$(arg change_wrench_frame)">
+<node name="wrench_ch_frame"  pkg="sun_utils" type="wrench_ch_frame" output="screen" if="$(arg change_wrench_frame)">
 
     <param name="use_rotation_only" type="bool" value="true"/>
 
