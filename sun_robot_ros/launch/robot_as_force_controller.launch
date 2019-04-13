@@ -26,8 +26,11 @@
     <param name="hz" value="1000.0"/>
     -->
 
-    <param name="topic_cartesian_command" value="force_control/desired_pose_twist_in"/>
+    <param name="service_get_clik_status" value="force_control/get_clik_status"/>
 
+    <param name="service_set_clik_mode" value="force_control/set_clik_mode"/>
+
+    <param name="topic_cartesian_command" value="force_control/desired_pose_twist_in"/>
 
 </node>
 
@@ -37,7 +40,7 @@
 
     <param name="topic_wrench_in" value="$(arg topic_measured_wrench)"/>
 
-    <param name="topic_wrench_out" value="force_controller/wrench_in"/>
+    <param name="topic_wrench_out" value="force_control/wrench_in"/>
 
     <param name="topic_pose" value="$(arg ee_pose_topic)"/>
 
@@ -45,7 +48,7 @@
 
 <node name="force_controller"  pkg="sun_robot_ros" type="force_controller" output="screen">
 
-    <param name="topic_measured_wrench" value="force_controller/wrench_in" if="$(arg change_wrench_frame)"/>
+    <param name="topic_measured_wrench" value="force_control/wrench_in" if="$(arg change_wrench_frame)"/>
     <param name="topic_measured_wrench" value="$(arg topic_measured_wrench)" unless="$(arg change_wrench_frame)"/>
 
     <!--

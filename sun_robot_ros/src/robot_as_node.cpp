@@ -54,8 +54,6 @@ int main(int argc, char *argv[])
     nh_private.param("service_get_clik_status" , service_clik_status, string("clik/get_status") );
     string service_set_clik_mode;    
     nh_private.param("service_set_clik_mode" , service_set_clik_mode, string("clik/set_mode") );
-    string service_force_control_status;    
-    nh_private.param("service_ger_force_control_status" , service_force_control_status, string("force_control/get_status") );
     string topic_joints_command;    
     nh_private.param("topic_joints_command" , topic_joints_command, string("clik/desired_q") );
     string topic_cartesian_command;  
@@ -67,7 +65,6 @@ int main(int argc, char *argv[])
         hz,
         service_clik_status,
         service_set_clik_mode,
-        service_force_control_status,
         topic_joints_command,
         topic_cartesian_command,
         move_joint_action_str,

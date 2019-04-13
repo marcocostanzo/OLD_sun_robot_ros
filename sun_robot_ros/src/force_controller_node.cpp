@@ -27,6 +27,7 @@
 #include "sun_robot_msgs/ForceControllerSetMode.h"
 #include "sun_robot_msgs/ForceControllerStatus.h"
 #include "sun_robot_msgs/ClikStatus.h"
+#include "sun_robot_msgs/ClikSetMode.h"
 #include "UnitQuaternion.h"
 #include "TF_MIMO/TF_MIMO_DIAGONAL.h"
 
@@ -76,159 +77,54 @@ uint8_t mode = sun_robot_msgs::ForceControllerSetMode::Request::MODE_STOP;
 
 //ROS VARS
 ros::Publisher pubPoseTwist_out;
-ros::ServiceClient serviceGetClikStatus;
+ros::ServiceClient set_click_mode_sc;
+ros::ServiceClient get_click_status_sc;
 
-void updatePose_in(bool b_refresh_clik = false){
-    sun_robot_msgs::ClikStatus status_msg;
+/**********************/
+/* Functions          */
+/**********************/
 
-    status_msg.request.refresh = b_refresh_clik;
+void updateClikStatus(sun_robot_msgs::ClikStatus::Response& res, bool b_refresh_clik = false){
+    sun_robot_msgs::ClikStatus::Request status_req;
+    status_req.refresh = b_refresh_clik;
 
-    bool b_result = serviceGetClikStatus.call(status_msg);
-    b_result = b_result && status_msg.response.success;
+    bool b_result = get_click_status_sc.call(status_req,res);
+    res.success = b_result && res.success;
 
-    if(!b_result){
-        cout << HEADER_PRINT BOLDRED "Failed to update initial pose" CRESET << endl;
-        exit(-1);
+    if(!res.success){
+        cout << HEADER_PRINT BOLDRED "Failed to update clik status" CRESET << endl;
+        return;
     }
 
-    pos_in[0] = status_msg.response.pose.position.x;
-    pos_in[1] = status_msg.response.pose.position.y;
-    pos_in[2] = status_msg.response.pose.position.z;
+    pos_out[0] = res.pose.position.x;
+    pos_out[1] = res.pose.position.y;
+    pos_out[2] = res.pose.position.z;
 
-    quat_in = UnitQuaternion(
-        status_msg.response.pose.orientation.w, 
+    quat_out = UnitQuaternion(
+        res.pose.orientation.w, 
         makeVector(
-            status_msg.response.pose.orientation.x,
-            status_msg.response.pose.orientation.y,
-            status_msg.response.pose.orientation.z
+            res.pose.orientation.x,
+            res.pose.orientation.y,
+            res.pose.orientation.z
         )
     );
 
-    cout << HEADER_PRINT "Initial Position updated: P = " << pos_in << " Q = " << quat_in << endl; 
+    pos_in = pos_out - Delta_pos;
+    quat_in = quat_out / Delta_quat;
 
 }
 
-void resetController(){
+void updateClikStatus(bool b_refresh_clik = false){
+    sun_robot_msgs::ClikStatus::Response res;
+    updateClikStatus(res, b_refresh_clik);
+}
+
+void resetController(bool b_refresh_clik = false){
     cout << HEADER_PRINT "Reset..." << endl;
     controller_tf.reset();
-    updatePose_in();
-}
-
-void readMeasuredWrench(const geometry_msgs::WrenchStamped::ConstPtr& wrench_msg){
-
-    wrench_m[0] = wrench_msg->wrench.force.x;
-    wrench_m[1] = wrench_msg->wrench.force.y;
-    wrench_m[2] = wrench_msg->wrench.force.z;
-    wrench_m[3] = wrench_msg->wrench.torque.x;
-    wrench_m[4] = wrench_msg->wrench.torque.y;
-    wrench_m[5] = wrench_msg->wrench.torque.z;
-
-}
-
-void readDesiredWrench(const geometry_msgs::WrenchStamped::ConstPtr& wrench_msg){
-
-    wrench_d[0] = wrench_msg->wrench.force.x;
-    wrench_d[1] = wrench_msg->wrench.force.y;
-    wrench_d[2] = wrench_msg->wrench.force.z;
-    wrench_d[3] = wrench_msg->wrench.torque.x;
-    wrench_d[4] = wrench_msg->wrench.torque.y;
-    wrench_d[5] = wrench_msg->wrench.torque.z;
-
-}
-
-bool serviceSetMode_cb(sun_robot_msgs::ForceControllerSetMode::Request  &req, 
-   		 		sun_robot_msgs::ForceControllerSetMode::Response &res)
-{
-
-    switch (req.mode)
-    {
-        case sun_robot_msgs::ForceControllerSetMode::Request::MODE_STOP:{
-
-            break;
-        }
-        case sun_robot_msgs::ForceControllerSetMode::Request::MODE_FORCE_CONTROL:{
-
-            break;
-        }
-        default:{
-            cout << HEADER_PRINT BOLDRED "Invalid mode in setMode()" CRESET << endl;
-            res.success = false;
-            return true;
-        }
-    }
-
-    if(mode!=req.mode){
-        cout << HEADER_PRINT "Changing mode to " << req.mode << endl;
-        resetController();
-        mode = req.mode;
-    }
-    
-    
-    wrench_d[0] = req.desired_wrench.force.x;
-    wrench_d[1] = req.desired_wrench.force.y;
-    wrench_d[2] = req.desired_wrench.force.z;
-    wrench_d[3] = req.desired_wrench.torque.x;
-    wrench_d[4] = req.desired_wrench.torque.y;
-    wrench_d[5] = req.desired_wrench.torque.z;
-
-    res.success = true;
-    return true;
-
-}
-
-bool serviceGetStatus_cb(sun_robot_msgs::ForceControllerStatus::Request  &req, 
-   		 		sun_robot_msgs::ForceControllerStatus::Response &res)
-{
-
-    cout << HEADER_PRINT "Service getStatus" << endl;
-
-    res.mode = mode;
-
-    res.desired_wrench.force.x = wrench_d[0];
-    res.desired_wrench.force.y = wrench_d[1];
-    res.desired_wrench.force.z = wrench_d[2];
-    res.desired_wrench.torque.x = wrench_d[3];
-    res.desired_wrench.torque.y = wrench_d[4];
-    res.desired_wrench.torque.z = wrench_d[5];
-
-    res.pose_correction.position.x = Delta_pos[0];
-    res.pose_correction.position.y = Delta_pos[1];
-    res.pose_correction.position.z = Delta_pos[2];
-    res.pose_correction.orientation.w = Delta_quat.getS();
-    Vector<3> quat_v = Delta_quat.getV();
-    res.pose_correction.orientation.x = quat_v[0];
-    res.pose_correction.orientation.y = quat_v[1];
-    res.pose_correction.orientation.z = quat_v[2];
-
-    res.success = true;
-    return true;
-
-}
-
-void readPoseTwist_in(const sun_robot_msgs::PoseTwistStamped::ConstPtr& pose_twist_msg){
-    
-    pos_in[0] = pose_twist_msg->pose.position.x;
-    pos_in[1] = pose_twist_msg->pose.position.y;
-    pos_in[2] = pose_twist_msg->pose.position.z;
-
-    quat_in = UnitQuaternion(
-                makeVector(
-                    pose_twist_msg->pose.orientation.x,
-                    pose_twist_msg->pose.orientation.y,
-                    pose_twist_msg->pose.orientation.z
-                )
-                ,
-                pose_twist_msg->pose.orientation.w
-    );
-
-    vel_in[0] = pose_twist_msg->twist.linear.x;
-    vel_in[1] = pose_twist_msg->twist.linear.y;
-    vel_in[2] = pose_twist_msg->twist.linear.z;
-
-    w_in[0] = pose_twist_msg->twist.angular.x;
-    w_in[1] = pose_twist_msg->twist.angular.y;
-    w_in[2] = pose_twist_msg->twist.angular.z;
-
+    Delta_pos = Zeros;
+    Delta_quat = UnitQuaternion();
+    updateClikStatus(b_refresh_clik);
 }
 
 void publishDesiredPoseTwist(){
@@ -260,6 +156,283 @@ void publishDesiredPoseTwist(){
 
 }
 
+void stopForceControl(){
+    mode = sun_robot_msgs::ForceControllerStatus::Response::MODE_STOP;
+    resetController();
+}
+
+bool isClikActive(){
+
+    sun_robot_msgs::ClikStatus msg_status;
+    msg_status.request.refresh = false;
+
+    bool b_result = get_click_status_sc.call(msg_status);
+    b_result = b_result && msg_status.response.success;
+
+    if(!b_result){
+        cout << HEADER_PRINT BOLDRED "Failed to get clik status" CRESET << endl;
+        return false;
+    }
+
+    return (msg_status.response.mode == sun_robot_msgs::ClikStatus::Response::MODE_CLIK);
+
+}
+
+/**********************/
+/* END Functions      */
+/**********************/
+
+/**********************/
+/* Service Server CB  */
+/**********************/
+
+//Clik Interface
+bool clik_set_mode_service_cb(
+    sun_robot_msgs::ClikSetMode::Request  &req, 
+   	sun_robot_msgs::ClikSetMode::Response &res
+)
+{
+    switch (mode){
+        case sun_robot_msgs::ForceControllerStatus::Response::MODE_STOP:{
+            return set_click_mode_sc.call(req,res);
+        }
+        case sun_robot_msgs::ForceControllerStatus::Response::MODE_FORCE_CONTROL:{
+            
+            switch (req.mode){
+                case sun_robot_msgs::ClikSetMode::Request::MODE_STOP:{
+                    cout << HEADER_PRINT YELLOW "Request clik_mode Stop... But Force controller is active..." << CRESET << endl;
+                    if( !isClikActive() ){
+                        cout << HEADER_PRINT RED "Clik is NOT active... STOPPING THE CONTROLLER..." CRESET << endl;
+                        stopForceControl();
+                        return set_click_mode_sc.call(req,res);
+                    } else{
+                        cout << HEADER_PRINT YELLOW "Also clik is active... do nothing.." << CRESET << endl;
+                        res.success = true;
+                    }
+                    break;
+                }
+                case sun_robot_msgs::ClikSetMode::Request::MODE_CLIK:{
+                    cout << HEADER_PRINT YELLOW "Request clik_mode CLIK... But Force controller is active... I have to check..." CRESET << endl;
+                    if( isClikActive() ){
+                        cout << HEADER_PRINT YELLOW "Clik is already active... do nothing" CRESET << endl;
+                        res.success = true;
+                    } else{
+                        cout << HEADER_PRINT BOLDRED "Clik is not active... But Force Control is Active... stopping the controller..." CRESET << endl;
+                        stopForceControl();
+                        res.success = false;
+                    }
+                    break;
+                }
+                case sun_robot_msgs::ClikSetMode::Request::MODE_JOINT:{
+                    cout << HEADER_PRINT YELLOW "Request clik_mode JOINT...But Force controller is active... Stopping the controller..." CRESET << endl;
+                    stopForceControl();
+                    return set_click_mode_sc.call(req,res);
+                }
+                default:{
+                    cout << HEADER_PRINT RED "Error in setMode(): Invalid mode in request!" CRESET << endl;
+                    res.success = false;
+                }
+            }
+
+            break;
+        }
+        default:{
+            /* Default Code */
+            cout << HEADER_PRINT BOLDRED "ERROR! INVALID MODE IN clikSetMode" CRESET << endl;
+            res.success = false;
+        }
+    }
+    return true;
+}
+
+//Clik Interface
+bool clik_get_status_service_cb(
+    sun_robot_msgs::ClikStatus::Request  &req, 
+   	sun_robot_msgs::ClikStatus::Response &res)
+{
+
+    switch (mode){
+        case sun_robot_msgs::ForceControllerStatus::Response::MODE_STOP:{
+            return get_click_status_sc.call(req,res);
+        }
+        case sun_robot_msgs::ForceControllerStatus::Response::MODE_FORCE_CONTROL:{
+
+            if( !isClikActive() ){
+                cout << HEADER_PRINT BOLDRED "ERROR: getClikStatus... ForceControl is active but CLIK not... stopping the controller!" CRESET << endl;
+                stopForceControl();
+                res.success = false;
+                return false;
+            } else {
+                
+                updateClikStatus(res, req.refresh);
+                if(!res.success){
+                    cout << HEADER_PRINT BOLDRED "ERROR: failed to update clik status..." CRESET << endl;
+                    stopForceControl();
+                    return true;
+                }
+
+                res.pose.position.x = pos_in[0];
+                res.pose.position.y = pos_in[1];
+                res.pose.position.z = pos_in[2];
+
+                res.pose.orientation.w = quat_in.getS();
+                Vector<3> quat_in_v = quat_in.getV();
+                res.pose.orientation.x = quat_in_v[0];
+                res.pose.orientation.y = quat_in_v[1];
+                res.pose.orientation.z = quat_in_v[2];
+
+            }
+
+            break;
+        }
+        default:{
+            /* Default Code */
+            cout << HEADER_PRINT BOLDRED "ERROR! INVALID MODE IN clikGetStatus" CRESET << endl;
+            res.success = false;
+        }
+    }
+
+    return true;
+
+}
+
+bool fc_set_mode_service_cb(
+    sun_robot_msgs::ForceControllerSetMode::Request  &req, 
+   	sun_robot_msgs::ForceControllerSetMode::Response &res
+)
+{
+
+    switch (req.mode)
+    {
+        case sun_robot_msgs::ForceControllerSetMode::Request::MODE_STOP:{
+            stopForceControl();
+            break;
+        }
+        case sun_robot_msgs::ForceControllerSetMode::Request::MODE_FORCE_CONTROL:{
+            if(!isClikActive()){
+                cout << HEADER_PRINT BOLDRED "Error in setMode()... cannot set mode force control if CLIK is not active!" CRESET << endl;
+                res.success = false;
+                return false;
+            }
+            break;
+        }
+        default:{
+            cout << HEADER_PRINT BOLDRED "Invalid mode in setMode()" CRESET << endl;
+            res.success = false;
+            return true;
+        }
+    }
+
+    if(mode!=req.mode){
+        cout << HEADER_PRINT "Changing mode to " << (int)req.mode << endl;
+        resetController();
+        mode = req.mode;
+    }
+    
+    
+    wrench_d[0] = req.desired_wrench.force.x;
+    wrench_d[1] = req.desired_wrench.force.y;
+    wrench_d[2] = req.desired_wrench.force.z;
+    wrench_d[3] = req.desired_wrench.torque.x;
+    wrench_d[4] = req.desired_wrench.torque.y;
+    wrench_d[5] = req.desired_wrench.torque.z;
+
+    res.success = true;
+    return true;
+
+}
+
+bool fc_get_status_service_cb(
+    sun_robot_msgs::ForceControllerStatus::Request  &req, 
+   	sun_robot_msgs::ForceControllerStatus::Response &res
+)
+{
+
+    cout << HEADER_PRINT "Service getStatus" << endl;
+
+    res.mode = mode;
+
+    res.desired_wrench.force.x = wrench_d[0];
+    res.desired_wrench.force.y = wrench_d[1];
+    res.desired_wrench.force.z = wrench_d[2];
+    res.desired_wrench.torque.x = wrench_d[3];
+    res.desired_wrench.torque.y = wrench_d[4];
+    res.desired_wrench.torque.z = wrench_d[5];
+
+    res.pose_correction.position.x = Delta_pos[0];
+    res.pose_correction.position.y = Delta_pos[1];
+    res.pose_correction.position.z = Delta_pos[2];
+    res.pose_correction.orientation.w = Delta_quat.getS();
+    Vector<3> quat_v = Delta_quat.getV();
+    res.pose_correction.orientation.x = quat_v[0];
+    res.pose_correction.orientation.y = quat_v[1];
+    res.pose_correction.orientation.z = quat_v[2];
+
+    res.success = true;
+    return true;
+
+}
+
+/**************************/
+/* end Service Server CB  */
+/**************************/
+
+/**********************/
+/* TOPICs CBs         */
+/**********************/
+
+void readMeasuredWrench(const geometry_msgs::WrenchStamped::ConstPtr& wrench_msg){
+
+    wrench_m[0] = wrench_msg->wrench.force.x;
+    wrench_m[1] = wrench_msg->wrench.force.y;
+    wrench_m[2] = wrench_msg->wrench.force.z;
+    wrench_m[3] = wrench_msg->wrench.torque.x;
+    wrench_m[4] = wrench_msg->wrench.torque.y;
+    wrench_m[5] = wrench_msg->wrench.torque.z;
+
+}
+
+void readDesiredWrench(const geometry_msgs::WrenchStamped::ConstPtr& wrench_msg){
+
+    wrench_d[0] = wrench_msg->wrench.force.x;
+    wrench_d[1] = wrench_msg->wrench.force.y;
+    wrench_d[2] = wrench_msg->wrench.force.z;
+    wrench_d[3] = wrench_msg->wrench.torque.x;
+    wrench_d[4] = wrench_msg->wrench.torque.y;
+    wrench_d[5] = wrench_msg->wrench.torque.z;
+
+}
+
+void readPoseTwist_in(const sun_robot_msgs::PoseTwistStamped::ConstPtr& pose_twist_msg){
+    
+    pos_in[0] = pose_twist_msg->pose.position.x;
+    pos_in[1] = pose_twist_msg->pose.position.y;
+    pos_in[2] = pose_twist_msg->pose.position.z;
+
+    quat_in = UnitQuaternion(
+                makeVector(
+                    pose_twist_msg->pose.orientation.x,
+                    pose_twist_msg->pose.orientation.y,
+                    pose_twist_msg->pose.orientation.z
+                )
+                ,
+                pose_twist_msg->pose.orientation.w
+    );
+
+    vel_in[0] = pose_twist_msg->twist.linear.x;
+    vel_in[1] = pose_twist_msg->twist.linear.y;
+    vel_in[2] = pose_twist_msg->twist.linear.z;
+
+    w_in[0] = pose_twist_msg->twist.angular.x;
+    w_in[1] = pose_twist_msg->twist.angular.y;
+    w_in[2] = pose_twist_msg->twist.angular.z;
+
+}
+
+/**********************/
+/* end TOPICs CBs     */
+/**********************/
+
 int main(int argc, char *argv[])
 {
     ros::init(argc,argv, "force_controller");
@@ -275,12 +448,18 @@ int main(int argc, char *argv[])
     nh_private.param("topic_pose_twist_in" , topic_pose_twist_in_str, string("force_control/desired_pose_twist_in") );
     string topic_pose_twist_out_str;
     nh_private.param("topic_pose_twist_out" , topic_pose_twist_out_str, string("clik/desired_pose_twist") );
-    string service_get_status_str;
-    nh_private.param("service_get_status" , service_get_status_str, string("force_control/get_status") );
-    string service_set_mode_str;
-    nh_private.param("service_set_mode" , service_set_mode_str, string("force_control/set_mode") );
-    string service_clik_status_str;
-    nh_private.param("service_get_clik_status" , service_clik_status_str, string("clik/get_status") );
+    string service_force_control_get_status_str;
+    nh_private.param("service_force_control_get_status" , service_force_control_get_status_str, string("force_control/get_status") );
+    string service_force_control_set_mode_str;
+    nh_private.param("service_force_control_set_mode" , service_force_control_set_mode_str, string("force_control/set_mode") );
+    string service_clik_get_status_str;
+    nh_private.param("service_clik_get_status" , service_clik_get_status_str, string("clik/get_status") );
+    string service_clik_set_mode_str;
+    nh_private.param("service_clik_set_mode" , service_clik_set_mode_str, string("clik/set_mode") );
+    string service_force_control_get_clik_status_str;
+    nh_private.param("service_force_control_get_clik_status" , service_force_control_get_clik_status_str, string("force_control/get_clik_status") );
+    string service_force_control_set_clik_mode_str;
+    nh_private.param("service_force_control_set_clik_mode" , service_force_control_set_clik_mode_str, string("force_control/set_clik_mode") );
 
     //control params
     int controlled_index;
@@ -324,17 +503,21 @@ int main(int argc, char *argv[])
     ros::Subscriber subPoseTwist_in = nh_public.subscribe(topic_pose_twist_in_str, 1, readPoseTwist_in);
 
     //Service Servers
-    ros::ServiceServer serviceGetStatus = nh_public.advertiseService( service_get_status_str, serviceGetStatus_cb);
-    ros::ServiceServer serviceSetMode = nh_public.advertiseService( service_set_mode_str, serviceSetMode_cb);
+    ros::ServiceServer serviceForceControlGetStatus = nh_public.advertiseService( service_force_control_get_status_str, fc_get_status_service_cb);
+    ros::ServiceServer serviceForceControlSetMode = nh_public.advertiseService( service_force_control_set_mode_str, fc_set_mode_service_cb);
+    ros::ServiceServer serviceForceControlGetClikStatus = nh_public.advertiseService( service_force_control_get_clik_status_str, clik_get_status_service_cb);
+    ros::ServiceServer serviceForceControlSetClikMode = nh_public.advertiseService( service_force_control_set_clik_mode_str, clik_set_mode_service_cb);
     
     //Service clients
-    serviceGetClikStatus = nh_public.serviceClient<sun_robot_msgs::ClikStatus>(service_clik_status_str);
+    get_click_status_sc = nh_public.serviceClient<sun_robot_msgs::ClikStatus>(service_clik_get_status_str);
+    set_click_mode_sc = nh_public.serviceClient<sun_robot_msgs::ClikSetMode>(service_clik_set_mode_str);
 
     //Pubs
     pubPoseTwist_out = nh_public.advertise<sun_robot_msgs::PoseTwistStamped>(topic_pose_twist_out_str, 1);
     
     //wait for servers
-    serviceGetClikStatus.waitForExistence();
+    get_click_status_sc.waitForExistence();
+    set_click_mode_sc.waitForExistence();
 
     //Build controller
     cout << HEADER_PRINT "Building the controller [controlled_index=" << controlled_index <<"]..." << endl; 
@@ -374,6 +557,7 @@ int main(int argc, char *argv[])
             case sun_robot_msgs::ForceControllerSetMode::Request::MODE_STOP:{
                 
                 Delta_pos = Zeros;
+                Delta_quat = UnitQuaternion();
 
                 break;
             }
