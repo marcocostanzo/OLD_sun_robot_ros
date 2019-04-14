@@ -1,2 +1,2 @@
 # sun_robot_ros
-ROS interface fot the Robot Class
+ROS interface for the Robot Class
