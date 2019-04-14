@@ -1,0 +1,28 @@
+#goal definition
+
+uint8 MODE_ABS_BASE=0
+uint8 MODE_REL_BASE=1
+uint8 MODE_REL_TOOL=2
+uint8 mode
+
+geometry_msgs/Vector3 normal
+geometry_msgs/Vector3 cor
+float64 angle
+float64 duration
+float64 initial_velocity
+float64 final_velocity
+float64 initial_acceleration
+float64 final_acceleration
+float64 start_time
+
+float64 start_delay
+float64 steady_state_thr
+---
+#result definition
+bool success
+string msg
+---
+#feedback
+float64 time_left
+geometry_msgs/Pose pose
+geometry_msgs/Twist twist

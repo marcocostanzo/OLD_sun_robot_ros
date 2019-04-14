@@ -29,8 +29,10 @@
 #include <sun_robot_msgs/SimpleMoveJointsAction.h>
 #include <sun_robot_msgs/MoveLineSegmentAction.h>
 #include <sun_robot_msgs/MoveCircumferenceAction.h>
+#include <sun_robot_msgs/MoveCORAction.h>
 #include "Traj_Generators/Vector_Independent_Traj.h"
 #include "Traj_Generators/Cartesian_Independent_Traj.h"
+#include "Traj_Generators/COR_Traj.h"
 #include "Traj_Generators/Line_Segment_Traj.h"
 #include "Traj_Generators/Position_Circumference_Traj.h"
 #include "Traj_Generators/Rotation_Const_Axis_Traj.h"
@@ -134,6 +136,16 @@ actionlib::SimpleActionServer<sun_robot_msgs::MoveCircumferenceAction> _move_cir
 std::string _move_circumference_action_str;
 sun_robot_msgs::MoveCircumferenceFeedback _move_circumference_feedback;
 
+/*
+    SimpleActionServer
+*/
+actionlib::SimpleActionServer<sun_robot_msgs::MoveCORAction> _move_cor_as; // NodeHandle instance must be created before this line. Otherwise strange error occurs.
+/*
+    Name of the action
+*/
+std::string _move_cor_action_str;
+sun_robot_msgs::MoveCORFeedback _move_cor_feedback;
+
 
 /*************************************
     END Action MoveCartesian
@@ -152,7 +164,8 @@ Robot_AS(
     const std::string& action_move_joints,
     const std::string& action_simple_move_joints,
     const std::string& action_move_line_segment,
-    const std::string& action_move_circumference//,
+    const std::string& action_move_circumference,
+    const std::string& action_move_cor//,
     //const std::string& action_move_line,
     //const std::string& action_move_circular
 );
@@ -346,6 +359,41 @@ geometry_msgs/Twist twist
 _ROBOT_AS_GENERATE_CARTESIAN_FCNS_HEADER_ALL( moveCircumference )
 
 void executeMoveCircumferenceCB( const sun_robot_msgs::MoveCircumferenceGoalConstPtr &goal );
+
+/*
+#goal definition
+
+uint8 MODE_ABS_BASE=0
+uint8 MODE_REL_BASE=1
+uint8 MODE_REL_TOOL=2
+uint8 mode
+
+geometry_msgs/Vector3 normal
+geometry_msgs/Vector3 cor
+float64 angle
+float64 duration
+float64 initial_velocity
+float64 final_velocity
+float64 initial_acceleration
+float64 final_acceleration
+float64 start_time
+
+float64 start_delay
+float64 steady_state_thr
+---
+#result definition
+bool success
+string msg
+---
+#feedback
+float64 time_left
+geometry_msgs/Pose pose
+geometry_msgs/Twist twist
+*/
+
+_ROBOT_AS_GENERATE_CARTESIAN_FCNS_HEADER_ALL( moveCOR )
+
+void executeMoveCORCB( const sun_robot_msgs::MoveCORGoalConstPtr &goal );
 
 /*
     CB that execute the joints trajectory

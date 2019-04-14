@@ -65,7 +65,8 @@ Robot_AS::Robot_AS(
     const string& action_move_joints,
     const string& action_simple_move_joints,
     const string& action_move_line_segment,
-    const string& action_move_circumference
+    const string& action_move_circumference,
+    const string& action_move_cor
 )
 :_num_joints(num_joints),
 _nh(nh),
@@ -78,6 +79,8 @@ _move_line_segment_action_str(action_move_line_segment),
 _move_line_segment_as(_nh, action_move_line_segment, boost::bind(&Robot_AS::executeMoveLineSegmentCB, this, _1), false),
 _move_circumference_action_str(action_move_circumference),
 _move_circumference_as(_nh, action_move_circumference, boost::bind(&Robot_AS::executeMoveCircumferenceCB, this, _1), false),
+_move_cor_action_str(action_move_cor),
+_move_cor_as(_nh, action_move_cor, boost::bind(&Robot_AS::executeMoveCORCB, this, _1), false),
 _b_action_running(false),
 _b_action_preempted(false),
 _actual_qR(Zeros(_num_joints))
@@ -146,6 +149,7 @@ void Robot_AS::start(){
     _simple_move_joint_as.start();
     _move_line_segment_as.start();
     _move_circumference_as.start();
+    _move_cor_as.start();
     cout << HEADER_PRINT GREEN "STARTED!" CRESET << endl;
 }
 
@@ -841,6 +845,136 @@ void Robot_AS::executeMoveCircumferenceCB( const sun_robot_msgs::MoveCircumferen
                                 );
 
 }
+
+/*
+#goal definition
+
+uint8 MODE_ABS_BASE=0
+uint8 MODE_REL_BASE=1
+uint8 MODE_REL_TOOL=2
+uint8 mode
+
+geometry_msgs/Vector3 normal
+geometry_msgs/Vector3 cor
+float64 angle
+float64 duration
+float64 initial_velocity
+float64 final_velocity
+float64 initial_acceleration
+float64 final_acceleration
+float64 start_time
+
+float64 start_delay
+float64 steady_state_thr
+---
+#result definition
+bool success
+string msg
+---
+#feedback
+float64 time_left
+geometry_msgs/Pose pose
+geometry_msgs/Twist twist
+*/
+
+_ROBOT_AS_GENERATE_CARTESIAN_FCNS_ALL( moveCOR, MoveCOR, _move_cor_feedback, _move_cor_as )
+
+void Robot_AS::executeMoveCORCB( const sun_robot_msgs::MoveCORGoalConstPtr &goal ){
+
+    if(_b_action_running){
+        moveCORAbort("Another action is running");
+        return;
+    }
+
+    _b_action_running = true;
+
+    //GET INITIAL POSITION!
+    if( !updateActualStatus(true) ){
+        cout << HEADER_PRINT BOLDRED "Failed to update Status" CRESET << endl;
+        moveCORAbort("Failed to update Status");
+        releaseResource();
+        return;
+    }
+
+    //Set Traj Mode
+    Vector<3> normal = makeVector(
+                    goal->normal.x,
+                    goal->normal.y,
+                    goal->normal.z
+                    );
+    Vector<3> cor = makeVector(
+                                goal->cor.x,
+                                goal->cor.y,
+                                goal->cor.z
+                                );
+
+    switch(goal->mode){
+        case sun_robot_msgs::MoveCORGoal::MODE_ABS_BASE:{
+            //OK
+            break;
+        }
+        case sun_robot_msgs::MoveCORGoal::MODE_REL_BASE:{
+            cor = _actual_position + cor;          
+            break;
+        }
+        case sun_robot_msgs::MoveCORGoal::MODE_REL_TOOL:{
+            Matrix<4,4> b_T_e = Identity;
+            b_T_e.slice<0,0,3,3>() = _actual_quaternion.torot();
+            b_T_e.T()[3].slice<0,3>() = _actual_position;
+
+            Vector<4> cor_tilde = Ones;
+            cor_tilde.slice<0,3>() = cor;
+            cor_tilde = b_T_e*cor_tilde;
+            cor = cor_tilde.slice<0,3>();
+
+            normal = b_T_e.slice<0,0,3,3>() * normal;
+
+            break;
+        }
+        default:{
+            cout << HEADER_PRINT BOLDRED "MoveCOR Invalid Mode" CRESET << endl;
+            moveCORAbort("Invalid Mode");
+            releaseResource();
+            return;
+        }
+    }
+
+    cout << HEADER_PRINT "normal: " << normal << endl;
+    cout << HEADER_PRINT "COR: " << cor << endl;
+    cout << HEADER_PRINT "Angle: " << goal->angle << endl; 
+
+    //Build Traj
+    COR_Traj cart_traj(
+                cor, 
+                normal, 
+                _actual_position,
+                _actual_quaternion,
+                Quintic_Poly_Traj(   
+                    goal->duration,//duration
+                    0.0,//double initial_position,
+                    goal->angle,//double final_position,
+                    goal->start_time,                            
+                    goal->initial_velocity, 
+                    goal->final_velocity,
+                    goal->initial_acceleration, 
+                    goal->final_acceleration
+                )
+    );
+
+    executeMoveCartesianGeneralCB( 
+                                cart_traj,
+                                goal->start_delay,
+                                goal->steady_state_thr,
+                                boost::bind(&Robot_AS::moveCORSuccess, this),
+                                boost::bind(&Robot_AS::moveCORPublishFeedback, this, _1, _2,_3,_4, _5),
+                                boost::bind(&Robot_AS::moveCORIsPreemptRequested, this),
+                                boost::bind(&Robot_AS::moveCORPreempted, this),
+                                boost::bind(&Robot_AS::moveCORAbort, this, _1) 
+                                );
+
+}
+
+
 
 /*
     CB that execute the joints trajectory
