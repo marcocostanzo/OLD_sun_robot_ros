@@ -40,6 +40,8 @@
 #include "sun_robot_msgs/JointPositionVelocityStamped.h"
 #include "sun_robot_msgs/PoseTwistStamped.h"
 
+#include "sun_robot_ros/Robot_AS_precompiler.h"
+
 class Robot_AS {
 
 private:
@@ -213,15 +215,7 @@ float64[] positions
 float64[] velocities
 */
 
-void moveJointAbort( const std::string& msg );
-
-void moveJointPublishFeedback( const TooN::Vector<>& qR, const TooN::Vector<>& dqR );
-
-bool moveJointIsPreemptRequested();
-
-void moveJointPreempted();
-
-void moveJointSuccess();
+_ROBOT_AS_GENERATE_JOINT_FCNS_HEADER_ALL( moveJoint )
 
 void executeMoveJointCB( const sun_robot_msgs::MoveJointsGoalConstPtr &goal );
 
@@ -241,15 +235,7 @@ float64[] positions
 float64[] velocities
 */
 
-void simpleMoveJointAbort( const std::string& msg );
-
-void simpleMoveJointPublishFeedback( const TooN::Vector<>& qR, const TooN::Vector<>& dqR );
-
-bool simpleMoveJointIsPreemptRequested();
-
-void simpleMoveJointPreempted();
-
-void simpleMoveJointSuccess();
+_ROBOT_AS_GENERATE_JOINT_FCNS_HEADER_ALL( simpleMoveJoint )
 
 void executeSimpleMoveJointCB( const sun_robot_msgs::SimpleMoveJointsGoalConstPtr &goal );
 
@@ -315,20 +301,9 @@ geometry_msgs/Pose pose
 geometry_msgs/Twist twist
 */
 
-void moveLineSegmentAbort( const std::string& msg );
+_ROBOT_AS_GENERATE_CARTESIAN_FCNS_HEADER_ALL( moveLineSegment )
 
-void moveLineSegmentPublishFeedback(    
-                                        double time_left,
-                                        const TooN::Vector<3>& pos,
-                                        const UnitQuaternion& quat,
-                                        const TooN::Vector<3>& vel,
-                                        const TooN::Vector<3>& w);
-
-bool moveLineSegmentIsPreemptRequested();
-
-void moveLineSegmentPreempted();
-
-void moveLineSegmentSuccess();
+void executeMoveLineSegmentCB( const sun_robot_msgs::MoveLineSegmentGoalConstPtr &goal );
 
 /*
 #goal definition
@@ -368,24 +343,9 @@ geometry_msgs/Pose pose
 geometry_msgs/Twist twist
 */
 
-void moveCircumferenceAbort( const std::string& msg );
-
-void moveCircumferencePublishFeedback(  
-                                        double time_left,  
-                                        const TooN::Vector<3>& pos,
-                                        const UnitQuaternion& quat,
-                                        const TooN::Vector<3>& vel,
-                                        const TooN::Vector<3>& w);
-
-bool moveCircumferenceIsPreemptRequested();
-
-void moveCircumferencePreempted();
-
-void moveCircumferenceSuccess();
+_ROBOT_AS_GENERATE_CARTESIAN_FCNS_HEADER_ALL( moveCircumference )
 
 void executeMoveCircumferenceCB( const sun_robot_msgs::MoveCircumferenceGoalConstPtr &goal );
-
-void executeMoveLineSegmentCB( const sun_robot_msgs::MoveLineSegmentGoalConstPtr &goal );
 
 /*
     CB that execute the joints trajectory

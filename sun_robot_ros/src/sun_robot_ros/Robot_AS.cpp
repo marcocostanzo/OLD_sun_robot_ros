@@ -253,38 +253,7 @@ float64[] positions
 float64[] velocities
 */
 
-void Robot_AS::moveJointAbort( const string& msg ){
-    sun_robot_msgs::MoveJointsResult move_joints_result;
-    move_joints_result.success = false;
-    move_joints_result.msg = msg;
-    _move_joint_as.setAborted(move_joints_result);
-}
-
-void Robot_AS::moveJointPublishFeedback( const Vector<>& qR, const Vector<>& dqR ){
-    for(int i=0; i<_num_joints; i++){
-        _move_joints_feedback.positions[i] = qR[i];
-        _move_joints_feedback.velocities[i] = dqR[i];
-    }
-    _move_joint_as.publishFeedback(_move_joints_feedback);
-}
-
-bool Robot_AS::moveJointIsPreemptRequested(){
-    return _move_joint_as.isPreemptRequested();
-}
-
-void Robot_AS::moveJointPreempted(){
-    sun_robot_msgs::MoveJointsResult move_joints_result;
-    move_joints_result.success = true;
-    move_joints_result.msg = "Preempted";
-    _move_joint_as.setPreempted(move_joints_result);
-}
-
-void Robot_AS::moveJointSuccess(){
-    sun_robot_msgs::MoveJointsResult move_joints_result;
-    move_joints_result.success = true;
-    move_joints_result.msg = "Compleate";
-    _move_joint_as.setSucceeded(move_joints_result);
-}
+_ROBOT_AS_GENERATE_JOINT_FCNS_ALL( moveJoint , MoveJoints , _move_joints_feedback , _move_joint_as )
 
 void Robot_AS::executeMoveJointCB( const sun_robot_msgs::MoveJointsGoalConstPtr &goal ){
 
@@ -365,38 +334,7 @@ float64[] positions
 float64[] velocities
 */
 
-void Robot_AS::simpleMoveJointAbort( const string& msg ){
-    sun_robot_msgs::SimpleMoveJointsResult move_joints_result;
-    move_joints_result.success = false;
-    move_joints_result.msg = msg;
-    _simple_move_joint_as.setAborted(move_joints_result);
-}
-
-void Robot_AS::simpleMoveJointPublishFeedback( const Vector<>& qR, const Vector<>& dqR ){
-    for(int i=0; i<_num_joints; i++){
-        _simple_move_joints_feedback.positions[i] = qR[i];
-        _simple_move_joints_feedback.velocities[i] = dqR[i];
-    }
-    _simple_move_joint_as.publishFeedback(_simple_move_joints_feedback);
-}
-
-bool Robot_AS::simpleMoveJointIsPreemptRequested(){
-    return _simple_move_joint_as.isPreemptRequested();
-}
-
-void Robot_AS::simpleMoveJointPreempted(){
-    sun_robot_msgs::SimpleMoveJointsResult move_joints_result;
-    move_joints_result.success = true;
-    move_joints_result.msg = "Preempted";
-    _simple_move_joint_as.setPreempted(move_joints_result);
-}
-
-void Robot_AS::simpleMoveJointSuccess(){
-    sun_robot_msgs::SimpleMoveJointsResult move_joints_result;
-    move_joints_result.success = true;
-    move_joints_result.msg = "Compleate";
-    _simple_move_joint_as.setSucceeded(move_joints_result);
-}
+_ROBOT_AS_GENERATE_JOINT_FCNS_ALL( simpleMoveJoint , SimpleMoveJoints , _simple_move_joints_feedback , _simple_move_joint_as )
 
 void Robot_AS::executeSimpleMoveJointCB( const sun_robot_msgs::SimpleMoveJointsGoalConstPtr &goal ){
 
@@ -623,60 +561,7 @@ geometry_msgs/Pose pose
 geometry_msgs/Twist twist
 */
 
-void Robot_AS::moveLineSegmentAbort( const string& msg ){
-    sun_robot_msgs::MoveLineSegmentResult move_line_segment_result;
-    move_line_segment_result.success = false;
-    move_line_segment_result.msg = msg;
-    _move_line_segment_as.setAborted(move_line_segment_result);
-}
-
-void Robot_AS::moveLineSegmentPublishFeedback(    
-                                        double time_left,
-                                        const Vector<3>& pos,
-                                        const UnitQuaternion& quat,
-                                        const Vector<3>& vel,
-                                        const Vector<3>& w){
-
-    _move_line_segment_feedback.time_left = time_left;
-
-    _move_line_segment_feedback.pose.position.x = pos[0];
-    _move_line_segment_feedback.pose.position.y = pos[1];
-    _move_line_segment_feedback.pose.position.z = pos[2];
-
-    _move_line_segment_feedback.pose.orientation.w = quat.getS(); 
-    Vector<3> quat_v = quat.getV();
-    _move_line_segment_feedback.pose.orientation.x = quat_v[0];
-    _move_line_segment_feedback.pose.orientation.y = quat_v[1];
-    _move_line_segment_feedback.pose.orientation.z = quat_v[2];
-                
-    _move_line_segment_feedback.twist.linear.x = vel[0];
-    _move_line_segment_feedback.twist.linear.y = vel[1];
-    _move_line_segment_feedback.twist.linear.z = vel[2];
-
-    _move_line_segment_feedback.twist.angular.x = w[0];
-    _move_line_segment_feedback.twist.angular.y = w[1];
-    _move_line_segment_feedback.twist.angular.z = w[2];
-
-    _move_line_segment_as.publishFeedback(_move_line_segment_feedback);
-}
-
-bool Robot_AS::moveLineSegmentIsPreemptRequested(){
-    return _move_line_segment_as.isPreemptRequested();
-}
-
-void Robot_AS::moveLineSegmentPreempted(){
-    sun_robot_msgs::MoveLineSegmentResult move_line_segment_result;
-    move_line_segment_result.success = true;
-    move_line_segment_result.msg = "Preempted";
-    _move_line_segment_as.setPreempted(move_line_segment_result);
-}
-
-void Robot_AS::moveLineSegmentSuccess(){
-    sun_robot_msgs::MoveLineSegmentResult move_line_segment_result;
-    move_line_segment_result.success = true;
-    move_line_segment_result.msg = "Compleate";
-    _move_line_segment_as.setSucceeded(move_line_segment_result);
-}
+_ROBOT_AS_GENERATE_CARTESIAN_FCNS_ALL( moveLineSegment, MoveLineSegment, _move_line_segment_feedback, _move_line_segment_as )
 
 void Robot_AS::executeMoveLineSegmentCB( const sun_robot_msgs::MoveLineSegmentGoalConstPtr &goal ){
 
@@ -832,60 +717,7 @@ geometry_msgs/Pose pose
 geometry_msgs/Twist twist
 */
 
-void Robot_AS::moveCircumferenceAbort( const string& msg ){
-    sun_robot_msgs::MoveCircumferenceResult move_circumference_result;
-    move_circumference_result.success = false;
-    move_circumference_result.msg = msg;
-    _move_circumference_as.setAborted(move_circumference_result);
-}
-
-void Robot_AS::moveCircumferencePublishFeedback(
-                                        double time_left,    
-                                        const Vector<3>& pos,
-                                        const UnitQuaternion& quat,
-                                        const Vector<3>& vel,
-                                        const Vector<3>& w){
-
-    _move_circumference_feedback.time_left = time_left;
-
-    _move_circumference_feedback.pose.position.x = pos[0];
-    _move_circumference_feedback.pose.position.y = pos[1];
-    _move_circumference_feedback.pose.position.z = pos[2];
-
-    _move_circumference_feedback.pose.orientation.w = quat.getS(); 
-    Vector<3> quat_v = quat.getV();
-    _move_circumference_feedback.pose.orientation.x = quat_v[0];
-    _move_circumference_feedback.pose.orientation.y = quat_v[1];
-    _move_circumference_feedback.pose.orientation.z = quat_v[2];
-                
-    _move_circumference_feedback.twist.linear.x = vel[0];
-    _move_circumference_feedback.twist.linear.y = vel[1];
-    _move_circumference_feedback.twist.linear.z = vel[2];
-
-    _move_circumference_feedback.twist.angular.x = w[0];
-    _move_circumference_feedback.twist.angular.y = w[1];
-    _move_circumference_feedback.twist.angular.z = w[2];
-
-    _move_circumference_as.publishFeedback(_move_circumference_feedback);
-}
-
-bool Robot_AS::moveCircumferenceIsPreemptRequested(){
-    return _move_circumference_as.isPreemptRequested();
-}
-
-void Robot_AS::moveCircumferencePreempted(){
-    sun_robot_msgs::MoveCircumferenceResult move_circumference_result;
-    move_circumference_result.success = true;
-    move_circumference_result.msg = "Preempted";
-    _move_circumference_as.setPreempted(move_circumference_result);
-}
-
-void Robot_AS::moveCircumferenceSuccess(){
-    sun_robot_msgs::MoveCircumferenceResult move_circumference_result;
-    move_circumference_result.success = true;
-    move_circumference_result.msg = "Compleate";
-    _move_circumference_as.setSucceeded(move_circumference_result);
-}
+_ROBOT_AS_GENERATE_CARTESIAN_FCNS_ALL( moveCircumference, MoveCircumference, _move_circumference_feedback, _move_circumference_as )
 
 void Robot_AS::executeMoveCircumferenceCB( const sun_robot_msgs::MoveCircumferenceGoalConstPtr &goal ){
 
