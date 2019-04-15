@@ -314,7 +314,7 @@ void Robot_AS::executeMoveJointCB( const sun_robot_msgs::MoveJointsGoalConstPtr 
                                 goal->start_delay,
                                 goal->steady_state_thr,
                                 boost::bind(&Robot_AS::moveJointSuccess, this),
-                                boost::bind(&Robot_AS::moveJointPublishFeedback, this, _1, _2),
+                                boost::bind(&Robot_AS::moveJointPublishFeedback, this, _1, _2, _3),
                                 boost::bind(&Robot_AS::moveJointIsPreemptRequested, this),
                                 boost::bind(&Robot_AS::moveJointPreempted, this),
                                 boost::bind(&Robot_AS::moveJointAbort, this, _1) 
@@ -392,7 +392,7 @@ void Robot_AS::executeSimpleMoveJointCB( const sun_robot_msgs::SimpleMoveJointsG
                                 goal->start_delay,
                                 goal->steady_state_thr,
                                 boost::bind(&Robot_AS::simpleMoveJointSuccess, this),
-                                boost::bind(&Robot_AS::simpleMoveJointPublishFeedback, this, _1, _2),
+                                boost::bind(&Robot_AS::simpleMoveJointPublishFeedback, this, _1, _2, _3),
                                 boost::bind(&Robot_AS::simpleMoveJointIsPreemptRequested, this),
                                 boost::bind(&Robot_AS::simpleMoveJointPreempted, this),
                                 boost::bind(&Robot_AS::simpleMoveJointAbort, this, _1) 
@@ -408,7 +408,7 @@ void Robot_AS::executeMoveJointGeneralCB(
                                 double start_delay,
                                 double steady_state_thr,
                                 const boost::function< void() >& successFcn,
-                                const boost::function< void(const Vector<>&,const Vector<>&) >& publishFeedbackFcn,
+                                const boost::function< void(double, const Vector<>&,const Vector<>&) >& publishFeedbackFcn,
                                 const boost::function< bool() >& isPreemptRequestedFcn,
                                 const boost::function< void() >& preemptedFcn,
                                 const boost::function< void(const string&) >& abortFcn 
@@ -444,7 +444,7 @@ void Robot_AS::executeMoveJointGeneralCB(
 
         publishQR(qR,dqR);
 
-        publishFeedbackFcn(qR,dqR);
+        publishFeedbackFcn( traj.getTimeLeft(time_now), qR, dqR );
 
         loop_rate.sleep();
 
@@ -476,11 +476,13 @@ void Robot_AS::executeMoveJointGeneralCB(
                 return;
             }
 
+            time_now = ros::Time::now().toSec();
+
             error_steady = norm( qR_final - _actual_qR );
 
             publishQR(qR_final,dqR_final);
             
-            publishFeedbackFcn(qR_final,qR_final);
+            publishFeedbackFcn( traj.getTimeLeft(time_now), qR_final, dqR_final);
 
             loop_rate.sleep();
 
@@ -977,7 +979,7 @@ void Robot_AS::executeMoveCORCB( const sun_robot_msgs::MoveCORGoalConstPtr &goal
 
 
 /*
-    CB that execute the joints trajectory
+    CB that execute the cartesian trajectory
 */
 void Robot_AS::executeMoveCartesianGeneralCB( 
                                 Cartesian_Traj_Interface& traj,
@@ -1056,6 +1058,8 @@ void Robot_AS::executeMoveCartesianGeneralCB(
                 releaseResource();
                 return;
             }
+
+            time_now = ros::Time::now().toSec();
 
             error_steady = norm( _actual_clik_error );
 

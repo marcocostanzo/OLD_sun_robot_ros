@@ -260,7 +260,7 @@ void executeMoveJointGeneralCB(
                                 double start_delay,
                                 double steady_state_thr,
                                 const boost::function< void() >& successFcn,
-                                const boost::function< void(const TooN::Vector<>&,const TooN::Vector<>&) >& publishFeedbackFcn,
+                                const boost::function< void(double, const TooN::Vector<>&,const TooN::Vector<>&) >& publishFeedbackFcn,
                                 const boost::function< bool() >& isPreemptRequestedFcn,
                                 const boost::function< void() >& preemptedFcn,
                                 const boost::function< void(const std::string&) >& abortFcn 

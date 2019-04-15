@@ -38,10 +38,11 @@ void Robot_AS::fcn_name( const string& msg ) { \
 }
 
 #define _ROBOT_AS_GENERATE_JOINT_PUBLISH_FEEDBACK_HEADER( fcn_name ) \
-void fcn_name( const TooN::Vector<>& qR, const TooN::Vector<>& dqR );
+void fcn_name( double time_left, const TooN::Vector<>& qR, const TooN::Vector<>& dqR );
 
 #define _ROBOT_AS_GENERATE_JOINT_PUBLISH_FEEDBACK( fcn_name, feedbk_msg, action_server ) \
-void Robot_AS::fcn_name( const Vector<>& qR, const Vector<>& dqR ){ \
+void Robot_AS::fcn_name( double time_left, const Vector<>& qR, const Vector<>& dqR ){ \
+    feedbk_msg.time_left = time_left; \
     for(int i=0; i<_num_joints; i++){ \
         feedbk_msg .positions[i] = qR[i]; \
         feedbk_msg .velocities[i] = dqR[i]; \
