@@ -264,6 +264,7 @@ bool clik_get_status_service_cb(
                 return false;
             } else {
                 
+                cout << HEADER_PRINT YELLOW "getClikStatus... Force Control is active!" << CRESET << endl;
                 updateClikStatus(res, req.refresh);
                 if(!res.success){
                     cout << HEADER_PRINT BOLDRED "ERROR: failed to update clik status..." CRESET << endl;
@@ -493,7 +494,7 @@ int main(int argc, char *argv[])
         exit(-1);
     }
     Vector<> den_coeff = wrapVector(den_coeff_std.data(), den_coeff_std.size());
-    Vector<> a_vect = den_coeff.slice(1,den_coeff.size()-1)/den_coeff[0]; 
+    Vector<> a_vect = -den_coeff.slice(1,den_coeff.size()-1)/den_coeff[0]; 
     num_coeff = num_coeff/den_coeff[0]; 
 
 
