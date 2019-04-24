@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   sun_systems_lib
   sun_robot_lib
   geometry_msgs
+  sun_robot_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -233,6 +234,15 @@ add_executable(sine_wave_generator
 )
 add_dependencies(sine_wave_generator ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(sine_wave_generator
+  ${catkin_LIBRARIES}
+)
+#########################################
+#########################################
+add_executable(chirp_wave_generator
+  src/chirp_wave_generator_node.cpp
+)
+add_dependencies(chirp_wave_generator ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(chirp_wave_generator
   ${catkin_LIBRARIES}
 )
 #########################################

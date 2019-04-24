@@ -12,6 +12,14 @@
 
 <arg name="force_controller_gain" default="1.0" />
 
+<arg name="use_integrator" />
+
+<arg name="integrator_gain" />
+
+<arg name="p_gain" />
+
+<arg name="stiff_2" />
+
 <arg name="topic_measured_wrench" />
 
 <arg name="ee_pose_topic" />
@@ -58,6 +66,14 @@
     <param name="controlled_index" value="$(arg controlled_index)"/>
 
     <param name="hz" value="$(arg force_controller_hz)"/>
+
+    <param name="use_integrator" value="$(arg use_integrator)"/>
+
+    <param name="integrator_gain" value="$(arg integrator_gain)"/>
+
+    <param name="p_gain" value="$(arg p_gain)"/>
+
+    <param name="stiff_2" value="$(arg stiff_2)"/>
 
     <rosparam param="num_coeff" subst_value="true">$(arg force_controller_num_coeff)</rosparam>
 

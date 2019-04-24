@@ -30,6 +30,36 @@
 #include "sun_robot_msgs/ClikSetMode.h"
 #include "UnitQuaternion.h"
 #include "TF_MIMO/TF_MIMO_DIAGONAL.h"
+#include "TF_SISO/TF_INTEGRATOR.h"
+
+TooN::Vector<> sqrt(const TooN::Vector<>& v_in){
+    TooN::Vector<> out = v_in;
+    for( int i=0; i<v_in.size();i++ ){
+        out[i] = sqrt(v_in[i]);
+    }
+    return out;
+}
+
+TooN::Vector<3> sign(const TooN::Vector<3>& v_in){
+    TooN::Vector<3> out = v_in;
+    for( int i=0; i<v_in.size();i++ ){
+        if(v_in[i] > 0.0)
+            out[i] = 1.0;
+        else if(v_in[i]<0.0)
+            out[i] = -1.0;
+        else
+            out[i] = 0.0;
+    }
+    return out;
+}
+
+TooN::Vector<> mtimes_ew( const TooN::Vector<>& v1, const TooN::Vector<>& v2 ){
+    TooN::Vector<> out = TooN::Zeros(v1.size());
+    for( int i=0; i<v1.size(); i++ ){
+        out[i] = v1[i]*v2[i];
+    }
+    return out;
+}
 
 #ifndef SUN_COLORS
 #define SUN_COLORS
@@ -194,7 +224,9 @@ bool clik_set_mode_service_cb(
 {
     switch (mode){
         case sun_robot_msgs::ForceControllerStatus::Response::MODE_STOP:{
-            return set_click_mode_sc.call(req,res);
+            bool b_tmp = set_click_mode_sc.call(req,res);
+            updateClikStatus();
+            return b_tmp;
         }
         case sun_robot_msgs::ForceControllerStatus::Response::MODE_FORCE_CONTROL:{
             
@@ -204,7 +236,9 @@ bool clik_set_mode_service_cb(
                     if( !isClikActive() ){
                         cout << HEADER_PRINT RED "Clik is NOT active... STOPPING THE CONTROLLER..." CRESET << endl;
                         stopForceControl();
-                        return set_click_mode_sc.call(req,res);
+                        bool b_tmp = set_click_mode_sc.call(req,res);
+                        updateClikStatus();
+                        return b_tmp;
                     } else{
                         cout << HEADER_PRINT YELLOW "Also clik is active... do nothing.." << CRESET << endl;
                         res.success = true;
@@ -226,7 +260,9 @@ bool clik_set_mode_service_cb(
                 case sun_robot_msgs::ClikSetMode::Request::MODE_JOINT:{
                     cout << HEADER_PRINT YELLOW "Request clik_mode JOINT...But Force controller is active... Stopping the controller..." CRESET << endl;
                     stopForceControl();
-                    return set_click_mode_sc.call(req,res);
+                    bool b_tmp = set_click_mode_sc.call(req,res);
+                    updateClikStatus();
+                    return b_tmp;
                 }
                 default:{
                     cout << HEADER_PRINT RED "Error in setMode(): Invalid mode in request!" CRESET << endl;
@@ -253,7 +289,8 @@ bool clik_get_status_service_cb(
 
     switch (mode){
         case sun_robot_msgs::ForceControllerStatus::Response::MODE_STOP:{
-            return get_click_status_sc.call(req,res);
+            updateClikStatus(res, req.refresh);
+            return res.success;
         }
         case sun_robot_msgs::ForceControllerStatus::Response::MODE_FORCE_CONTROL:{
 
@@ -466,8 +503,31 @@ int main(int argc, char *argv[])
     int controlled_index;
     nh_private.param("controlled_index" , controlled_index, 3 );
 
+    bool b_use_integrator;
+    nh_private.param("use_integrator" , b_use_integrator, false );
+
+    cout << "INTEGRATOR " << ( b_use_integrator ? "YES" : "NO" ) << endl;
+
+    double integrator_gain;
+    nh_private.param("integrator_gain" , integrator_gain, 0.0 );
+
+    double p_gain;
+    nh_private.param("p_gain" , p_gain, 0.0 );
+
+    double stiff_2;
+    if(nh_private.hasParam("stiff_2")){
+        nh_private.param("stiff_2" , stiff_2, 1.0 );
+    } else if(b_use_integrator) {
+        cout << HEADER_PRINT BOLDRED "param stiff_2 not provided!" CRESET << endl;
+        exit(-1);
+    }
+    
+
     double controller_gain;
     nh_private.param("controller_gain" , controller_gain, 1.0 );
+
+    if(b_use_integrator)
+        controller_gain = 0.0;
 
     double hz;
     if(nh_private.hasParam("hz")){
@@ -526,11 +586,21 @@ int main(int argc, char *argv[])
         std::vector<TF_SISO_Ptr> siso_diag_vect;
         for(int i=0; i<DIM_MIMO; i++){
             if(i == controlled_index){
-                siso_diag_vect.push_back(
-                                TF_SISO_Ptr(
-                                    new TF_SISO(num_coeff, a_vect, 1.0/hz)
-                                )
-                );
+                if(b_use_integrator){
+                    siso_diag_vect.push_back(
+                        TF_INTEGRATOR_Ptr(
+                            new TF_INTEGRATOR(
+                                1.0/hz,integrator_gain
+                            )
+                        )
+                    );
+                }else{
+                    siso_diag_vect.push_back(
+                                    TF_SISO_Ptr(
+                                        new TF_SISO(num_coeff, a_vect, 1.0/hz)
+                                    )
+                    );
+                }
             } else{
                 //Zero TF
                 siso_diag_vect.push_back(
@@ -563,8 +633,16 @@ int main(int argc, char *argv[])
                 break;
             }
             case sun_robot_msgs::ForceControllerSetMode::Request::MODE_FORCE_CONTROL:{
-                
-                Delta_pos = controller_gain*controller_tf.apply( wrench_d.slice<0,3>() - wrench_m.slice<0,3>() );;
+
+                if( b_use_integrator ){
+                    Vector<3> err = wrench_d.slice<0,3>() - wrench_m.slice<0,3>();
+                    Delta_pos = controller_tf.apply( err ) + p_gain * err ;
+                    //Delta_pos = Delta_pos/3.2251920750065783e+03;
+                    Delta_pos = mtimes_ew(sqrt( abs(Delta_pos)/stiff_2 ) , sign(Delta_pos) );
+                }
+                else {
+                Delta_pos = controller_gain*controller_tf.apply( wrench_d.slice<0,3>() - wrench_m.slice<0,3>() );
+                }
 
                 break;
             }
