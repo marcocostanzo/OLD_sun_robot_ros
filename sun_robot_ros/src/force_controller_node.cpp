@@ -635,10 +635,27 @@ int main(int argc, char *argv[])
             case sun_robot_msgs::ForceControllerSetMode::Request::MODE_FORCE_CONTROL:{
 
                 if( b_use_integrator ){
-                    Vector<3> err = wrench_d.slice<0,3>() - wrench_m.slice<0,3>();
+                    //Vector<3> err = wrench_d.slice<0,3>() - wrench_m.slice<0,3>();
+                    Vector<3> err = mtimes_ew(sqrt( abs(wrench_d.slice<0,3>())/stiff_2 ) , sign(wrench_d.slice<0,3>()) )         
+                                    - 
+                                    mtimes_ew(sqrt( abs(wrench_m.slice<0,3>())/stiff_2 ) , sign(wrench_m.slice<0,3>()) )
+                                    ;
+                    vel_in[controlled_index] = err[controlled_index] * integrator_gain;
                     Delta_pos = controller_tf.apply( err ) + p_gain * err ;
                     //Delta_pos = Delta_pos/3.2251920750065783e+03;
-                    Delta_pos = mtimes_ew(sqrt( abs(Delta_pos)/stiff_2 ) , sign(Delta_pos) );
+                    //Delta_pos = mtimes_ew(sqrt( abs(Delta_pos)/stiff_2 ) , sign(Delta_pos) );
+
+                    bool b_use_quat = false;
+                    if(b_use_quat){
+                    //Quaternion
+                    Vector<3> omega_d;
+                    omega_d[2] = 0.01 * ( wrench_d[5] - wrench_m[5] );
+                    Vector<4> dot_delta_quat_vec = (Delta_quat.dot(omega_d)).getDouble();
+                    //eul ?
+                    Vector<4> delta_quat_vec = Delta_quat.getDouble() + (1.0/hz)*dot_delta_quat_vec;
+                    Delta_quat = UnitQuaternion(delta_quat_vec);
+                    w_in[2] = omega_d[2];
+                    }
                 }
                 else {
                 Delta_pos = controller_gain*controller_tf.apply( wrench_d.slice<0,3>() - wrench_m.slice<0,3>() );
