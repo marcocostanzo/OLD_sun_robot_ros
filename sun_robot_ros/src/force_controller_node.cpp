@@ -31,6 +31,8 @@
 #include "UnitQuaternion.h"
 #include "TF_MIMO/TF_MIMO_DIAGONAL.h"
 #include "TF_SISO/TF_INTEGRATOR.h"
+#include "geometry_msgs/PoseStamped.h"
+
 
 TooN::Vector<> sqrt(const TooN::Vector<>& v_in){
     TooN::Vector<> out = v_in;
@@ -100,8 +102,8 @@ Vector<6> wrench_m;
 Vector<6> wrench_d;
 Vector<3> pos_in, Delta_pos, pos_out;
 UnitQuaternion quat_in, Delta_quat, quat_out;
-Vector<3> vel_in;
-Vector<3> w_in;
+Vector<3> vel_in, Delta_vel, vel_out;
+Vector<3> w_in, Delta_w, w_out;
 TF_MIMO_DIAGONAL controller_tf(DIM_MIMO);
 uint8_t mode = sun_robot_msgs::ForceControllerSetMode::Request::MODE_STOP;
 
@@ -140,7 +142,8 @@ void updateClikStatus(sun_robot_msgs::ClikStatus::Response& res, bool b_refresh_
     );
 
     pos_in = pos_out - Delta_pos;
-    quat_in = quat_out / Delta_quat;
+    //quat_in = quat_out / Delta_quat;
+    quat_in = UnitQuaternion(inv(Delta_quat) * quat_out, quat_out );
 
 }
 
@@ -153,6 +156,8 @@ void resetController(bool b_refresh_clik = false){
     cout << HEADER_PRINT "Reset..." << endl;
     controller_tf.reset();
     Delta_pos = Zeros;
+    Delta_vel = Zeros;
+    Delta_w = Zeros;
     Delta_quat = UnitQuaternion();
     updateClikStatus(b_refresh_clik);
 }
@@ -171,13 +176,13 @@ void publishDesiredPoseTwist(){
     out_msg.pose.orientation.y = quat_v[1];
     out_msg.pose.orientation.z = quat_v[2];
                 
-    out_msg.twist.linear.x = vel_in[0];
-    out_msg.twist.linear.y = vel_in[1];
-    out_msg.twist.linear.z = vel_in[2];
+    out_msg.twist.linear.x = vel_out[0];
+    out_msg.twist.linear.y = vel_out[1];
+    out_msg.twist.linear.z = vel_out[2];
 
-    out_msg.twist.angular.x = w_in[0];
-    out_msg.twist.angular.y = w_in[1];
-    out_msg.twist.angular.z = w_in[2];
+    out_msg.twist.angular.x = w_out[0];
+    out_msg.twist.angular.y = w_out[1];
+    out_msg.twist.angular.z = w_out[2];
 
     out_msg.header.frame_id = "force_controller";
     out_msg.header.stamp = ros::Time::now();
@@ -467,6 +472,21 @@ void readPoseTwist_in(const sun_robot_msgs::PoseTwistStamped::ConstPtr& pose_twi
 
 }
 
+Matrix<3,3> b_R_ee = Identity;
+void pose_cb(const geometry_msgs::PoseStamped::ConstPtr& pose_msg){
+
+        UnitQuaternion uq = UnitQuaternion(
+                pose_msg->pose.orientation.w,
+                makeVector(
+                    pose_msg->pose.orientation.x,
+                    pose_msg->pose.orientation.y,
+                    pose_msg->pose.orientation.z
+                )
+        );
+        b_R_ee = uq.torot();
+
+}
+
 /**********************/
 /* end TOPICs CBs     */
 /**********************/
@@ -557,11 +577,18 @@ int main(int argc, char *argv[])
     Vector<> a_vect = -den_coeff.slice(1,den_coeff.size()-1)/den_coeff[0]; 
     num_coeff = num_coeff/den_coeff[0]; 
 
+    //FRAME selection
+    string topic_pose_str;
+    nh_private.param("topic_pose" , topic_pose_str, string("pose") );
+    bool b_forces_are_in_ee_frame;
+    nh_private.param("forces_are_in_ee_frame" , b_forces_are_in_ee_frame, false );
+
 
     //Subs
     ros::Subscriber subMeasuredWrench = nh_public.subscribe(topic_measured_wrench_str, 1, readMeasuredWrench);
     ros::Subscriber subDesiredWrench = nh_public.subscribe(topic_desired_wrench_str, 1, readDesiredWrench);
     ros::Subscriber subPoseTwist_in = nh_public.subscribe(topic_pose_twist_in_str, 1, readPoseTwist_in);
+    ros::Subscriber sub_pose = nh_public.subscribe(topic_pose_str, 1, pose_cb);
 
     //Service Servers
     ros::ServiceServer serviceForceControlGetStatus = nh_public.advertiseService( service_force_control_get_status_str, fc_get_status_service_cb);
@@ -628,7 +655,9 @@ int main(int argc, char *argv[])
             case sun_robot_msgs::ForceControllerSetMode::Request::MODE_STOP:{
                 
                 Delta_pos = Zeros;
+                Delta_vel = Zeros;
                 Delta_quat = UnitQuaternion();
+                Delta_w = Zeros;
 
                 break;
             }
@@ -640,21 +669,41 @@ int main(int argc, char *argv[])
                                     - 
                                     mtimes_ew(sqrt( abs(wrench_m.slice<0,3>())/stiff_2 ) , sign(wrench_m.slice<0,3>()) )
                                     ;
-                    vel_in[controlled_index] = err[controlled_index] * integrator_gain;
+                    Delta_vel = Zeros;
+                    Delta_vel[controlled_index] = err[controlled_index] * integrator_gain;
+                    Delta_pos = Zeros;
                     Delta_pos = controller_tf.apply( err ) + p_gain * err ;
                     //Delta_pos = Delta_pos/3.2251920750065783e+03;
                     //Delta_pos = mtimes_ew(sqrt( abs(Delta_pos)/stiff_2 ) , sign(Delta_pos) );
 
-                    bool b_use_quat = false;
+                    if(b_forces_are_in_ee_frame){
+                        Delta_pos = b_R_ee*Delta_pos;
+                        Delta_vel = b_R_ee*Delta_vel;
+                    }
+
+                    bool b_use_quat = true;
+                    bool b_total_quat = true;
                     if(b_use_quat){
                     //Quaternion
                     Vector<3> omega_d;
-                    omega_d[2] = 0.01 * ( wrench_d[5] - wrench_m[5] );
+                    omega_d[2] = -0.02 * ( wrench_d[5] - wrench_m[5] );
+                    if(b_total_quat){
+                        omega_d[0] = -0.02 * ( wrench_d[3] - wrench_m[3] );
+                        omega_d[1] = -0.02 * ( wrench_d[4] - wrench_m[4] );
+                    }
+                    if(b_forces_are_in_ee_frame){
+                        omega_d = b_R_ee*omega_d;
+                    }
                     Vector<4> dot_delta_quat_vec = (Delta_quat.dot(omega_d)).getDouble();
                     //eul ?
                     Vector<4> delta_quat_vec = Delta_quat.getDouble() + (1.0/hz)*dot_delta_quat_vec;
                     Delta_quat = UnitQuaternion(delta_quat_vec);
-                    w_in[2] = omega_d[2];
+                    Delta_w = Zeros;
+                    Delta_w[2] = omega_d[2];
+                    if(b_total_quat){
+                        Delta_w[0] = omega_d[0];
+                        Delta_w[1] = omega_d[1];
+                    }
                     }
                 }
                 else {
@@ -671,7 +720,10 @@ int main(int argc, char *argv[])
         }
 
         pos_out = pos_in + Delta_pos;
-        quat_out = quat_in * Delta_quat; //Here for future implementations...
+        vel_out = vel_in + Delta_vel;
+        //quat_out = quat_in * Delta_quat; //Here for future implementations...
+        quat_out = Delta_quat * quat_in;
+        w_out = w_in + Delta_w;
         
         publishDesiredPoseTwist();        
 

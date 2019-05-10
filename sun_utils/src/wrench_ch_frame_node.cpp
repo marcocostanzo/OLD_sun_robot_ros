@@ -26,32 +26,69 @@
 #include "geometry_msgs/WrenchStamped.h"
 #include "UnitQuaternion.h"
 
+#ifndef SUN_COLORS
+#define SUN_COLORS
+
+/* ======= COLORS ========= */
+#define CRESET   "\033[0m"
+#define BLACK   "\033[30m"      /* Black */
+#define RED     "\033[31m"      /* Red */
+#define GREEN   "\033[32m"      /* Green */
+#define YELLOW  "\033[33m"      /* Yellow */
+#define BLUE    "\033[34m"      /* Blue */
+#define MAGENTA "\033[35m"      /* Magenta */
+#define CYAN    "\033[36m"      /* Cyan */
+#define WHITE   "\033[37m"      /* White */
+#define BOLD    "\033[1m"       /* Bold */
+#define BOLDBLACK   "\033[1m\033[30m"      /* Bold Black */
+#define BOLDRED     "\033[1m\033[31m"      /* Bold Red */
+#define BOLDGREEN   "\033[1m\033[32m"      /* Bold Green */
+#define BOLDYELLOW  "\033[1m\033[33m"      /* Bold Yellow */
+#define BOLDBLUE    "\033[1m\033[34m"      /* Bold Blue */
+#define BOLDMAGENTA "\033[1m\033[35m"      /* Bold Magenta */
+#define BOLDCYAN    "\033[1m\033[36m"      /* Bold Cyan */
+#define BOLDWHITE   "\033[1m\033[37m"      /* Bold White */
+/*===============================*/
+
+#endif
+
+#define HEADER_PRINT BOLDYELLOW "[" << ros::this_node::getName() << "] " CRESET 
+
 using namespace TooN;
 using namespace std;
 
 ros::Publisher pub_wrench_out;
 
 Vector<3> pos;
+Vector<3> delta_pos;
 UnitQuaternion uq;
-bool b_only_rotation;
+Matrix<3,3> R = Identity;
+bool b_use_position;
+bool b_use_rotation;
 void pose_cb(const geometry_msgs::PoseStamped::ConstPtr& pose_msg){
 
-    if(b_only_rotation){
-        pos = Zeros;
+    if(!b_use_position){
+        pos = delta_pos;
     } else{
         pos[0] = pose_msg->pose.position.x;
         pos[1] = pose_msg->pose.position.y;
         pos[2] = pose_msg->pose.position.z;
     }
 
-    uq = UnitQuaternion(
-            pose_msg->pose.orientation.w,
-            makeVector(
-                pose_msg->pose.orientation.x,
-                pose_msg->pose.orientation.y,
-                pose_msg->pose.orientation.z
-            )
-    );
+    if(b_use_rotation){
+        uq = UnitQuaternion(
+                pose_msg->pose.orientation.w,
+                makeVector(
+                    pose_msg->pose.orientation.x,
+                    pose_msg->pose.orientation.y,
+                    pose_msg->pose.orientation.z
+                )
+        );
+        R = uq.torot();
+    } else {
+        uq = UnitQuaternion();
+        R = Identity;
+    }
 
 }
 
@@ -69,8 +106,8 @@ void wrench_in_cb(const geometry_msgs::WrenchStamped::ConstPtr& wrench_msg){
                         wrench_msg->wrench.torque.z
     );
 
-    torque = uq.mtimes( (pos ^ force) + torque );
-    force = uq.mtimes(force);
+    torque = R*( (pos ^ force) + torque );
+    force = R*(force);
 
     geometry_msgs::WrenchStamped out_msg;
 
@@ -99,7 +136,22 @@ int main(int argc, char *argv[])
     nh_private.param("topic_wrench_out" , topic_wrench_out_str, string("wrench_out") );
     string topic_pose_str;
     nh_private.param("topic_pose" , topic_pose_str, string("pose") );
-    nh_private.param("use_rotation_only" , b_only_rotation, false );
+    nh_private.param("use_position" , b_use_position, true );
+    nh_private.param("use_rotation" , b_use_rotation, true );
+
+    if(!b_use_position){
+        if(nh_private.hasParam("delta_pos")){
+            vector<double> delta_pos_std;
+            nh_private.getParam("delta_pos", delta_pos_std);
+            if(delta_pos_std.size() != 3){
+                cout << HEADER_PRINT BOLDRED "Error: delta_pos size mismatch" CRESET << endl;
+                exit(-1);
+            }
+            delta_pos = wrapVector(delta_pos_std.data(), delta_pos_std.size());
+        } else {
+            delta_pos = Zeros;
+        }
+    }
 
     //Subs
     ros::Subscriber sub_wrench_in = nh_public.subscribe(topic_wrench_in_str, 1, wrench_in_cb);
