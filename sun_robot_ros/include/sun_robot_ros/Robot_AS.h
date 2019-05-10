@@ -37,6 +37,7 @@
 #include "Traj_Generators/Position_Circumference_Traj.h"
 #include "Traj_Generators/Rotation_Const_Axis_Traj.h"
 #include "Traj_Generators/Quintic_Poly_Traj.h"
+#include "Traj_Generators/Trapez_Vel_Traj.h"
 #include "sun_robot_msgs/ClikStatus.h"
 #include "sun_robot_msgs/ClikSetMode.h"
 #include "sun_robot_msgs/JointPositionVelocityStamped.h"

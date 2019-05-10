@@ -943,15 +943,52 @@ void Robot_AS::executeMoveCORCB( const sun_robot_msgs::MoveCORGoalConstPtr &goal
 
     cout << HEADER_PRINT "normal: " << normal << endl;
     cout << HEADER_PRINT "COR: " << cor << endl;
-    cout << HEADER_PRINT "Angle: " << goal->angle << endl; 
+    cout << HEADER_PRINT "Angle: " << goal->angle << endl;
 
-    //Build Traj
-    COR_Traj cart_traj(
-                cor, 
-                normal, 
-                _actual_position,
-                _actual_quaternion,
-                Quintic_Poly_Traj(   
+    Scalar_Traj_Interface* scal_traj; 
+
+    if(goal->use_trapez){
+        cout << HEADER_PRINT "TRAPEZ" << endl;
+
+        if( goal->trapez_cruise_speed * goal->trapez_acceleration < 0.0 ){
+            cout << HEADER_PRINT BOLDRED "MoveCOR INVALID TRAPEZ PARAMS" CRESET << endl;
+            moveCORAbort("Invalid Trapez, check sign");
+            releaseResource();
+            return;
+        }
+
+        scal_traj = new Trapez_Vel_Traj(
+            goal->trapez_cruise_speed,
+            goal->trapez_cruise_duration,
+            goal->trapez_acceleration,
+            0.0,
+            goal->start_time
+            );
+
+        cout << "Trapez info: " << endl;
+        cout << "Final Position: " << static_cast<Trapez_Vel_Traj *>(scal_traj)->getFinalPosition() << endl;
+        cout << "CruiseTime: " << static_cast<Trapez_Vel_Traj *>(scal_traj)->getCruiseTime() << endl;
+        cout << "Duration: " << scal_traj->getDuration() << endl;
+        cout << "Continue? ";
+        char ans;
+        cin >> ans;
+        cout << endl;
+        if(ans != 'y' && ans != 'Y'){
+            cout << HEADER_PRINT BOLDRED "MoveCOR Abort from user" CRESET << endl;
+            moveCORAbort("Abort from user");
+            releaseResource();
+            return;
+        }
+
+        /*scal_traj = new Trapez_Traj(   
+                        goal->duration,
+                        0.0,
+                        goal->angle,
+                        goal->trapez_cruise_speed,
+                        goal->start_time
+            );*/
+    } else {
+        scal_traj = new Quintic_Poly_Traj(   
                     goal->duration,//duration
                     0.0,//double initial_position,
                     goal->angle,//double final_position,
@@ -960,7 +997,16 @@ void Robot_AS::executeMoveCORCB( const sun_robot_msgs::MoveCORGoalConstPtr &goal
                     goal->final_velocity,
                     goal->initial_acceleration, 
                     goal->final_acceleration
-                )
+                );
+    }
+
+    //Build Traj
+    COR_Traj cart_traj(
+                cor, 
+                normal, 
+                _actual_position,
+                _actual_quaternion,
+                *scal_traj
     );
 
     executeMoveCartesianGeneralCB( 
@@ -973,6 +1019,8 @@ void Robot_AS::executeMoveCORCB( const sun_robot_msgs::MoveCORGoalConstPtr &goal
                                 boost::bind(&Robot_AS::moveCORPreempted, this),
                                 boost::bind(&Robot_AS::moveCORAbort, this, _1) 
                                 );
+    
+    delete scal_traj;
 
 }
 

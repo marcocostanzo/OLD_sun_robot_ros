@@ -15,6 +15,12 @@ float64 initial_acceleration
 float64 final_acceleration
 float64 start_time
 
+#trapez
+bool use_trapez
+float64 trapez_cruise_speed
+float64 trapez_cruise_duration
+float64 trapez_acceleration
+
 float64 start_delay
 float64 steady_state_thr
 ---
